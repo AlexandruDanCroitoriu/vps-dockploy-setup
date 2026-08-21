@@ -93,6 +93,15 @@ export function ProjectCard({
                 }))}
                 githubProviders={githubProviders}
                 repositoryApplications={repositoryApplications}
+                deployedApplications={project.environments.flatMap(
+                  (environment) =>
+                    environment.services
+                      .filter((service) => service.type === "applications")
+                      .map((service) => ({
+                        name: service.name,
+                        sourcePath: service.sourcePath,
+                      })),
+                )}
               />
             )}
             <AddDatabaseDialog

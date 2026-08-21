@@ -53,11 +53,13 @@ export function AddApplicationDialog({
   environments,
   githubProviders,
   repositoryApplications,
+  deployedApplications,
 }: {
   projectId: string;
   environments: Array<{ environmentId: string; name: string }>;
   githubProviders: DokployGithubProvider[];
   repositoryApplications: RepositoryApplication[];
+  deployedApplications: Array<{ name: string; sourcePath: string | null }>;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isListOpen, setIsListOpen] = useState(false);
@@ -72,6 +74,16 @@ export function AddApplicationDialog({
   const [state, formAction, pending] = useActionState(action, initialState);
   const router = useRouter();
   const canBrowse = environments.length > 0;
+  const normalizedDeployedPaths = new Set(
+    deployedApplications.flatMap((application) =>
+      application.sourcePath
+        ? [normalizeBuildPath(application.sourcePath).toLowerCase()]
+        : [],
+    ),
+  );
+  const deployedNames = new Set(
+    deployedApplications.map((application) => application.name.toLowerCase()),
+  );
 
   useEffect(() => {
     if (state.status !== "success") return;
@@ -130,24 +142,40 @@ export function AddApplicationDialog({
               <ul className="max-h-72 overflow-y-auto py-1">
                 {repositoryApplications.map((application) => (
                   <li key={application.path}>
-                    <button
-                      type="button"
-                      onClick={() => selectApplication(application)}
-                      className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-indigo-50 dark:hover:bg-indigo-500/10"
-                    >
-                      <FolderIcon
-                        className="size-4 shrink-0 text-indigo-500"
-                        aria-hidden="true"
-                      />
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium text-gray-800 dark:text-gray-200">
-                          {application.name}
-                        </span>
-                        <span className="block truncate text-xs text-gray-500 dark:text-gray-400">
-                          /{application.path}
-                        </span>
-                      </span>
-                    </button>
+                    {(() => {
+                      const isDeployed =
+                        normalizedDeployedPaths.has(
+                          normalizeBuildPath(application.path).toLowerCase(),
+                        ) || deployedNames.has(application.name.toLowerCase());
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => selectApplication(application)}
+                          disabled={isDeployed}
+                          title={
+                            isDeployed
+                              ? "Already deployed in this project"
+                              : undefined
+                          }
+                          className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent dark:hover:bg-indigo-500/10 dark:disabled:hover:bg-transparent"
+                        >
+                          <FolderIcon
+                            className="size-4 shrink-0 text-indigo-500"
+                            aria-hidden="true"
+                          />
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-medium text-gray-800 dark:text-gray-200">
+                              {application.name}
+                            </span>
+                            <span className="block truncate text-xs text-gray-500 dark:text-gray-400">
+                              {isDeployed
+                                ? "Already deployed"
+                                : `/${application.path}`}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })()}
                   </li>
                 ))}
               </ul>

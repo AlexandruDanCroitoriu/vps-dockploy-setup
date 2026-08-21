@@ -22,6 +22,7 @@ export type DokployService = {
   appName: string | null;
   env: string;
   serverId: string | null;
+  sourcePath: string | null;
   type: DokployServiceType;
   status: DokployServiceStatus;
   credentials: Array<{ label: string; value: string; secret?: boolean }>;

@@ -10,6 +10,7 @@ const service: DokployService = {
   appName: "compose-app",
   env: "",
   serverId: null,
+  sourcePath: null,
   type: "compose",
   status: "down",
   credentials: [],

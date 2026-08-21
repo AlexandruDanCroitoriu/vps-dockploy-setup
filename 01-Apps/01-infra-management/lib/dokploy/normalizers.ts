@@ -139,6 +139,11 @@ export function normalizeServices(environment: JsonRecord) {
           appName: stringValue(candidate.appName) || null,
           env: stringValue(candidate.env),
           serverId: stringValue(candidate.serverId) || null,
+          sourcePath:
+            stringValue(
+              candidate.buildPath,
+              stringValue(candidate.customGitBuildPath),
+            ) || null,
           type,
           status: serviceStatus(candidate, type),
           credentials: databaseCredentials(candidate, type),

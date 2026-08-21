@@ -72,7 +72,12 @@ describe("normalizeProject", () => {
           environmentId: "environment-1",
           name: "Production",
           applications: [
-            { applicationId: "app-1", name: "Web", applicationStatus: "done" },
+            {
+              applicationId: "app-1",
+              name: "Web",
+              applicationStatus: "done",
+              customGitBuildPath: "/01-Apps/01-web",
+            },
           ],
           compose: [
             {
@@ -108,6 +113,9 @@ describe("normalizeProject", () => {
       "redis",
     ]);
     expect(project?.environments[0].services[0].status).toBe("running");
+    expect(project?.environments[0].services[0].sourcePath).toBe(
+      "/01-Apps/01-web",
+    );
     expect(project?.environments[0].services[1].status).toBe("deploying");
     expect(project?.environments[0].services[2].credentials).toContainEqual({
       label: "Internal Port",
