@@ -129,9 +129,11 @@ export function EnvironmentVariableEditor(props: EnvironmentEditorProps) {
         <button
           type="button"
           onClick={() => setIsOpen(true)}
-          className="rounded-md border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:border-indigo-300 hover:text-indigo-600 dark:border-white/10 dark:text-gray-300 dark:hover:border-indigo-400/40 dark:hover:text-indigo-300"
+          title={`Edit variables for ${props.targetName}`}
+          className="shrink-0 rounded-md border border-gray-200 p-2 text-gray-500 hover:border-indigo-300 hover:text-indigo-600 dark:border-white/10 dark:text-gray-400 dark:hover:border-indigo-400/40 dark:hover:text-indigo-300"
         >
-          Edit variables
+          <span className="sr-only">Edit variables for {props.targetName}</span>
+          <PencilSquareIcon className="size-4" aria-hidden="true" />
         </button>
       ) : (
         <button

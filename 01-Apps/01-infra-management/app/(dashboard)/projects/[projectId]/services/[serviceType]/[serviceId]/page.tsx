@@ -21,6 +21,7 @@ import {
 import { DatabaseCredentials } from "../../../../_components/database/database-credentials";
 import { EnvironmentVariableEditor } from "../../../../_components/environment/environment-variable-editor";
 import { ServicePageTabs } from "../../../../_components/service/service-tabs";
+import { ReloadButton } from "../../../../_components/reload-button";
 
 export default function ServicePage({
   params,
@@ -108,9 +109,12 @@ async function ServiceContent({
       >
         ← {project.name}
       </Link>
-      <h1 className="mt-4 text-xl font-semibold text-gray-900 dark:text-gray-100">
-        {getServiceDisplayName(service)}
-      </h1>
+      <div className="mt-4 flex items-center justify-between gap-3">
+        <h1 className="min-w-0 truncate text-xl font-semibold text-gray-900 dark:text-gray-100">
+          {getServiceDisplayName(service)}
+        </h1>
+        <ReloadButton />
+      </div>
       <ServicePageTabs
         serviceId={resolvedService.id}
         serviceType={resolvedService.type}
@@ -144,6 +148,7 @@ async function ServiceContent({
             <ul className="mt-4 max-w-3xl">
               <ServiceCard
                 service={resolvedService}
+                domains={domains}
                 showCredentialsButton={!isDatabase}
                 showEnvironmentEditor={false}
               />

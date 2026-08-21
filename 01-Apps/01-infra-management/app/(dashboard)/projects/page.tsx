@@ -1,9 +1,11 @@
 import { Suspense } from "react";
 
-import { getDokployProjects } from "@/lib/dokploy";
+import { getDokployGithubProviders, getDokployProjects } from "@/lib/dokploy";
+import { getRepositoryApplications } from "@/lib/github/repository-applications";
 
 import { ProjectCard } from "./_components/project/project-card";
 import { CreateProjectDialog } from "./_components/project/create-project-dialog";
+import { ReloadButton } from "./_components/reload-button";
 
 export default function ProjectsPage() {
   return (
@@ -12,7 +14,10 @@ export default function ProjectsPage() {
         <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
           Projects
         </h1>
-        <CreateProjectDialog />
+        <div className="flex items-center gap-2">
+          <ReloadButton />
+          <CreateProjectDialog />
+        </div>
       </div>
 
       <Suspense fallback={<ProjectsLoading />}>
@@ -45,7 +50,13 @@ function ProjectsLoading() {
 }
 
 async function ProjectsContent() {
-  const projects = await getDokployProjects();
+  const [projects, githubProviders, repositoryApplications] = await Promise.all(
+    [
+      getDokployProjects(),
+      getDokployGithubProviders().catch(() => []),
+      getRepositoryApplications().catch(() => []),
+    ],
+  );
 
   return (
     <>
@@ -56,7 +67,13 @@ async function ProjectsContent() {
       ) : (
         <div className="mt-4 grid items-start gap-4 lg:grid-cols-2">
           {projects.map((project) => (
-            <ProjectCard key={project.projectId} project={project} />
+            <ProjectCard
+              key={project.projectId}
+              project={project}
+              linkServices
+              githubProviders={githubProviders}
+              repositoryApplications={repositoryApplications}
+            />
           ))}
         </div>
       )}

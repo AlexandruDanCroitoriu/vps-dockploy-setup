@@ -113,6 +113,30 @@ export async function deployDokployService(
   });
 }
 
+export async function reloadDokployService(
+  type: DokployServiceType,
+  serviceId: string,
+  appName: string,
+) {
+  const endpoint = SERVICE_ENDPOINTS[type];
+  await dokployPost(
+    `${endpoint.path}.${type === "compose" ? "redeploy" : "reload"}`,
+    type === "compose"
+      ? { [endpoint.idParameter]: serviceId }
+      : { [endpoint.idParameter]: serviceId, appName },
+  );
+}
+
+export async function stopDokployService(
+  type: DokployServiceType,
+  serviceId: string,
+) {
+  const endpoint = SERVICE_ENDPOINTS[type];
+  await dokployPost(`${endpoint.path}.stop`, {
+    [endpoint.idParameter]: serviceId,
+  });
+}
+
 export async function getDokployDomainServiceNames(service: DokployService) {
   if (service.type === "applications")
     return [service.appName || service.name].filter(Boolean);

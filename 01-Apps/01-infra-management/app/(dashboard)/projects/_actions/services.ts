@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import {
   DOKPLOY_SERVICE_TYPES,
   deployDokployService,
+  reloadDokployService,
+  stopDokployService,
   updateDokployServiceEnv,
   type DokployServiceType,
 } from "@/lib/dokploy";
@@ -43,6 +45,56 @@ export async function updateServiceEnvAction(
   }
 }
 
+export async function reloadServiceAction(
+  projectId: string,
+  type: DokployServiceType,
+  serviceId: string,
+  appName: string,
+  previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  void previousState;
+  void formData;
+  if (!(await requireAuthenticatedSession())) return SESSION_EXPIRED_STATE;
+  if (
+    !projectId ||
+    !DOKPLOY_SERVICE_TYPES.includes(type) ||
+    !serviceId ||
+    !/^[a-zA-Z0-9._-]{1,63}$/.test(appName)
+  )
+    return { status: "error", message: "Invalid service." };
+  try {
+    await reloadDokployService(type, serviceId, appName);
+    revalidatePath("/projects");
+    revalidatePath(`/projects/${projectId}`);
+    return { status: "success", message: "Service reloaded." };
+  } catch (error) {
+    return getActionError(error, "Unable to reload the service.", "the reload");
+  }
+}
+
+export async function stopServiceAction(
+  projectId: string,
+  type: DokployServiceType,
+  serviceId: string,
+  previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  void previousState;
+  void formData;
+  if (!(await requireAuthenticatedSession())) return SESSION_EXPIRED_STATE;
+  if (!projectId || !DOKPLOY_SERVICE_TYPES.includes(type) || !serviceId)
+    return { status: "error", message: "Invalid service." };
+  try {
+    await stopDokployService(type, serviceId);
+    revalidatePath("/projects");
+    revalidatePath(`/projects/${projectId}`);
+    return { status: "success", message: "Service stopped." };
+  } catch (error) {
+    return getActionError(error, "Unable to stop the service.", "the stop");
+  }
+}
+
 export async function deployServiceAction(
   projectId: string,
   type: DokployServiceType,
@@ -57,6 +109,7 @@ export async function deployServiceAction(
     return { status: "error", message: "Invalid service." };
   try {
     await deployDokployService(type, serviceId);
+    revalidatePath("/projects");
     revalidatePath(`/projects/${projectId}`);
     return { status: "success", message: "Deployment started." };
   } catch (error) {

@@ -2,13 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
-import {
-  getDokployGithubProviders,
-  getDokployProject,
-} from "@/lib/dokploy";
+import { getDokployGithubProviders, getDokployProject } from "@/lib/dokploy";
 import { getRepositoryApplications } from "@/lib/github/repository-applications";
 
 import { ProjectCard } from "../_components/project/project-card";
+import { ReloadButton } from "../_components/reload-button";
 
 export default function ProjectPage({
   params,
@@ -38,18 +36,20 @@ async function ProjectContent({
 
   return (
     <div>
-      <Link
-        href="/projects"
-        className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-300 dark:hover:text-indigo-200"
-      >
-        ← All projects
-      </Link>
+      <div className="flex items-center justify-between gap-3">
+        <Link
+          href="/projects"
+          className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-300 dark:hover:text-indigo-200"
+        >
+          ← All projects
+        </Link>
+        <ReloadButton />
+      </div>
       <div className="mt-4">
         <ProjectCard
           project={project}
           editableName
           linkServices
-          showDeployButtons
           githubProviders={githubProviders}
           repositoryApplications={repositoryApplications}
         />

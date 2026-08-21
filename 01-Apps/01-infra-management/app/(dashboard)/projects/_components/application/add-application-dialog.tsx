@@ -1,10 +1,6 @@
 "use client";
 
-import {
-  ChevronDownIcon,
-  CodeBracketIcon,
-  FolderIcon,
-} from "@heroicons/react/24/outline";
+import { CodeBracketIcon, FolderIcon } from "@heroicons/react/24/outline";
 import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useState } from "react";
 
@@ -112,7 +108,7 @@ export function AddApplicationDialog({
   const unavailableReason =
     environments.length === 0
       ? "Create a project environment before adding an application"
-      : "Choose an application";
+      : "Add application";
 
   return (
     <>
@@ -123,11 +119,10 @@ export function AddApplicationDialog({
           disabled={!canBrowse}
           title={unavailableReason}
           aria-expanded={isListOpen}
-          className="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex items-center rounded-md bg-indigo-600 p-2 text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-40"
         >
+          <span className="sr-only">Add application</span>
           <CodeBracketIcon className="size-4" aria-hidden="true" />
-          Add application
-          <ChevronDownIcon className="size-3.5" aria-hidden="true" />
         </button>
         {isListOpen && (
           <div className="absolute right-0 z-30 mt-2 w-72 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl dark:border-white/10 dark:bg-gray-900">

@@ -127,10 +127,10 @@ export function AddDatabaseDialog({
             ? "Create a project environment before adding a database"
             : "Add database"
         }
-        className="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-40"
+        className="inline-flex items-center rounded-md bg-indigo-600 p-2 text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-40"
       >
+        <span className="sr-only">Add database</span>
         <CircleStackIcon className="size-4" aria-hidden="true" />
-        Add database
       </button>
 
       {isOpen && (

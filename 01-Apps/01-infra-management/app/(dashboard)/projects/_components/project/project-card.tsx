@@ -1,11 +1,16 @@
-import { CubeIcon } from "@heroicons/react/24/outline";
+import {
+  ArrowTopRightOnSquareIcon,
+  CubeIcon,
+} from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { Suspense } from "react";
 
 import {
   getServiceTypeLabel,
+  getDokployDomains,
   getDokployLiveServiceStatus,
   isDatabaseService,
+  type DokployDomain,
   type DokployProject,
   type DokployGithubProvider,
   type DokployService,
@@ -15,7 +20,7 @@ import type { RepositoryApplication } from "@/lib/github/repository-applications
 import { DatabaseCredentials } from "../database/database-credentials";
 import { AddDatabaseDialog } from "../database/add-database-dialog";
 import { AddApplicationDialog } from "../application/add-application-dialog";
-import { DeployServiceButton } from "../service/deploy-service-button";
+import { ServiceLifecycleButtons } from "../service/service-lifecycle-buttons";
 import { EnvironmentVariableEditor } from "../environment/environment-variable-editor";
 import { ProjectNameEditor } from "./project-name-editor";
 
@@ -35,14 +40,12 @@ export function ProjectCard({
   project,
   editableName = false,
   linkServices = false,
-  showDeployButtons = false,
   githubProviders,
   repositoryApplications,
 }: {
   project: DokployProject;
   editableName?: boolean;
   linkServices?: boolean;
-  showDeployButtons?: boolean;
   githubProviders?: DokployGithubProvider[];
   repositoryApplications?: RepositoryApplication[];
 }) {
@@ -141,7 +144,6 @@ export function ProjectCard({
               services={services.map(({ service }) => service)}
               projectId={project.projectId}
               linkServices={linkServices}
-              showDeployButtons={showDeployButtons}
             />
           </Suspense>
         )}
@@ -178,16 +180,21 @@ async function ProjectServices({
   services,
   projectId,
   linkServices,
-  showDeployButtons,
 }: {
   services: DokployService[];
   projectId: string;
   linkServices: boolean;
-  showDeployButtons: boolean;
 }) {
-  const results = await Promise.allSettled(
-    services.map(getDokployLiveServiceStatus),
-  );
+  const [statusResults, domainResults] = await Promise.all([
+    Promise.allSettled(services.map(getDokployLiveServiceStatus)),
+    Promise.allSettled(
+      services.map((service) =>
+        service.type === "applications" || service.type === "compose"
+          ? getDokployDomains(service.type, service.id)
+          : Promise.resolve([]),
+      ),
+    ),
+  ]);
 
   return (
     <ul className="mt-3 grid gap-2">
@@ -195,12 +202,16 @@ async function ProjectServices({
         <ServiceCard
           key={`${service.type}-${service.id}`}
           service={
-            results[index].status === "fulfilled"
-              ? results[index].value
+            statusResults[index].status === "fulfilled"
+              ? statusResults[index].value
               : service
           }
+          domains={
+            domainResults[index].status === "fulfilled"
+              ? domainResults[index].value
+              : []
+          }
           projectId={projectId}
-          showDeployButton={showDeployButtons}
           href={
             linkServices
               ? `/projects/${encodeURIComponent(projectId)}/services/${service.type}/${encodeURIComponent(service.id)}`
@@ -217,15 +228,15 @@ export function ServiceCard({
   href,
   showCredentialsButton = true,
   showEnvironmentEditor = true,
-  showDeployButton = false,
   projectId,
+  domains = [],
 }: {
   service: DokployService;
   href?: string;
   showCredentialsButton?: boolean;
   showEnvironmentEditor?: boolean;
-  showDeployButton?: boolean;
   projectId?: string;
+  domains?: DokployDomain[];
 }) {
   const resolvedService = service;
   const status = serviceStatusStyles[resolvedService.status];
@@ -264,6 +275,26 @@ export function ServiceCard({
             </>
           )}
         </p>
+        {domains.length > 0 && (
+          <div className="mt-1 flex min-w-0 flex-wrap gap-x-3 gap-y-1">
+            {domains.map((domain) => (
+              <a
+                key={domain.domainId}
+                href={`${domain.https ? "https" : "http"}://${domain.host}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={`Open ${domain.host}`}
+                className="inline-flex min-w-0 items-center gap-1 text-[11px] text-indigo-600 hover:text-indigo-500 hover:underline dark:text-indigo-300 dark:hover:text-indigo-200"
+              >
+                <span className="max-w-52 truncate">{domain.host}</span>
+                <ArrowTopRightOnSquareIcon
+                  className="size-3 shrink-0"
+                  aria-hidden="true"
+                />
+              </a>
+            ))}
+          </div>
+        )}
       </div>
       {!isDatabase && showEnvironmentEditor && (
         <EnvironmentVariableEditor
@@ -280,12 +311,14 @@ export function ServiceCard({
           databaseName={getServiceTypeLabel(resolvedService.type)}
         />
       )}
-      {showDeployButton && projectId && (
-        <DeployServiceButton
+      {projectId && (
+        <ServiceLifecycleButtons
           projectId={projectId}
           serviceId={resolvedService.id}
           serviceName={getServiceDisplayName(resolvedService)}
+          appName={resolvedService.appName ?? ""}
           serviceType={resolvedService.type}
+          status={resolvedService.status}
         />
       )}
     </li>
