@@ -8,6 +8,42 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
+# Infra Management agent guide
+
+This directory contains a private, single-administrator dashboard for operating a
+Dokploy instance. Preserve its deliberately small operational model: one trusted
+administrator, one application replica, and server-side access to Dokploy.
+
+## Before making changes
+
+- Read `README.md` for setup, deployment, environment, and troubleshooting details.
+- Inspect the working tree before editing.
+- For Next.js behavior, follow the generated rule above and read the relevant guide
+  under `node_modules/next/dist/docs/` before writing framework code.
+- Never print, copy into source, or expose values from `.env` files.
+
+## Architecture map
+
+- `app/(auth)/` contains the public login experience.
+- `app/(dashboard)/` contains authenticated pages and the dashboard shell.
+- `app/(dashboard)/projects/_actions/` contains authenticated Server Actions split
+  by projects, services, databases, and domains. Shared action state, authentication,
+  and safe error conversion live in `shared.ts`.
+- `app/(dashboard)/projects/_components/` contains project UI grouped by feature.
+  Keep route files small and compose them from these feature components.
+- `app/api/` contains route handlers. Every non-auth route must independently verify
+  the session even though `proxy.ts` also protects it.
+- `components/ui/` contains small reusable UI primitives. Extend these before
+  duplicating dialog, form-control, button, or status styles in feature components.
+- `lib/dokploy/` is the server-only Dokploy integration. Transport belongs in
+  `client.ts`, safe API errors in `errors.ts`, response normalization in
+  `normalizers.ts`, validation in `validators.ts`, and endpoint-specific operations
+  in their corresponding feature modules.
+- `lib/logs/` contains pure deployment-log parsing and formatting.
+- `tests/e2e/` contains Playwright browser tests. Unit and component tests are
+  colocated with the source they cover.
+
+
 ## Authentication architecture
 
 - This is intentionally a single-user application deployed as one Dockploy/Next.js replica. Do not add user registration, a user database, Redis, OAuth providers, roles, or multi-user behavior unless the user explicitly changes that requirement.

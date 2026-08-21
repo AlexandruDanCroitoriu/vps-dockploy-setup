@@ -1,0 +1,23 @@
+.search {
+  gap: 4px;
+  border-bottom: 1px solid rgb(255 255 255 / 0.06);
+  background: #090d14 !important;
+  padding: 8px 10px !important;
+}
+.search :global(.react-lazylog-searchbar-input) {
+  height: 28px !important;
+  border: 1px solid rgb(255 255 255 / 0.08) !important;
+  border-radius: 6px;
+  background: rgb(255 255 255 / 0.05) !important;
+  color: #d1d5db !important;
+}
+.viewer {
+  background: #090d14 !important;
+  line-height: 1.45;
+}
+.viewer :global(.log-number) {
+  width: 38px !important;
+  min-width: 38px !important;
+  margin-right: 10px !important;
+  color: #4b5563 !important;
+}
