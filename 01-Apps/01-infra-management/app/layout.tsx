@@ -1,12 +1,7 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 
-import { Geist, Geist_Mono } from "next/font/google";
-
 import "./globals.css";
-
-import DashboardLayout from "@/components/dashboardLayout";
-
 
 export const metadata: Metadata = {
   title: "Infra Management",
@@ -31,9 +26,7 @@ export default async function RootLayout({
         .filter(Boolean)
         .join(" ")}
     >
-      <body className="min-h-full flex flex-col">
-        <DashboardLayout>{children}</DashboardLayout>
-      </body>
+      <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );
 }

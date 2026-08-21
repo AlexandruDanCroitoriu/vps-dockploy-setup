@@ -9,5 +9,5 @@ export default function Home() {
         Welcome to your infrastructure management dashboard.
       </p>
     </div>
-  )
+  );
 }
