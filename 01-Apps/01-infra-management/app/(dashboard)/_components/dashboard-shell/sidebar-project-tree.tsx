@@ -37,7 +37,7 @@ export function SidebarProjectTree({
               onClick={onNavigate}
               className={classes(
                 current
-                  ? "bg-gray-50 text-indigo-600 dark:bg-white/5 dark:text-white"
+                  ? "bg-gray-50 text-indigo-600 dark:bg-white/5 dark:text-gray-100"
                   : "text-gray-600 dark:text-gray-400",
                 "block truncate rounded-md px-1.5 py-1 text-xs",
               )}

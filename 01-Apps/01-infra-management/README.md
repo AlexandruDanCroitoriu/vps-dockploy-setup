@@ -11,7 +11,6 @@ The Add application dropdown discovers directories under `01-Apps`; selecting on
 - Server-only Dokploy API integration under `lib/dokploy/`
 - Tailwind CSS 4, Headless UI, Monaco Editor, and React Log Viewer
 
-
 ## Required environment variables
 
 Copy `.env.example` to `.env.local` for local development and configure:
@@ -38,6 +37,7 @@ node -e 'console.log(require("bcryptjs").hashSync("replace-with-a-strong-passwor
 Generate the authentication secret with `openssl rand -base64 32`. Keep `AUTH_SECRET` unchanged between deployments; rotating it signs out the current session.
 
 ## Local development
+
 ```bash
 npm run lint
 npm run typecheck
@@ -65,4 +65,6 @@ The Dokploy API URL must be reachable from the application container. The API ke
 - Five failed logins from one client IP within 15 minutes trigger a 15-minute lockout. Restarting the process clears this state.
 - Never log credentials or environment values, and never commit `.env` files.
 - If every login fails after deployment, verify that environment-variable expansion did not alter the bcrypt hash.
+- Dokploy variables should normally use the raw bcrypt hash. Authentication also
+  accepts the `\$`-escaped form used in Next.js environment files.
 - If Dokploy data cannot load, verify the URL, API key, container network reachability, and application logs.

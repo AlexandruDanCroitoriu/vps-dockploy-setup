@@ -49,7 +49,7 @@ export function AppDialog({
           >
             <div className="flex items-start gap-4 border-b border-gray-200 px-5 py-4 sm:px-6 dark:border-white/10">
               <div className="mr-auto min-w-0">
-                <DialogTitle className="text-base font-semibold text-gray-900 dark:text-white">
+                <DialogTitle className="text-base font-semibold text-gray-900 dark:text-gray-100">
                   {title}
                 </DialogTitle>
                 {description && (

@@ -15,7 +15,7 @@ export function ConfiguredDomainList({ config }: { config: DomainConfig }) {
 
   return (
     <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-gray-800/40">
-      <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
+      <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
         Configured domains
       </h2>
       <div className="mt-3 space-y-2">
@@ -186,7 +186,7 @@ function DomainRow({
               <button
                 type="button"
                 onClick={() => setEditing(true)}
-                className="block max-w-full truncate text-left text-sm font-medium text-gray-900 hover:text-indigo-600 dark:text-white dark:hover:text-indigo-300"
+                className="block max-w-full truncate text-left text-sm font-medium text-gray-900 hover:text-indigo-600 dark:text-gray-100 dark:hover:text-indigo-300"
                 aria-expanded={false}
               >
                 {domain.host}

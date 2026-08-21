@@ -14,7 +14,10 @@ import {
   type DokployServiceType,
 } from "@/lib/dokploy";
 
-import { getServiceDisplayName, ServiceCard } from "../../../../_components/project/project-card";
+import {
+  getServiceDisplayName,
+  ServiceCard,
+} from "../../../../_components/project/project-card";
 import { DatabaseCredentials } from "../../../../_components/database/database-credentials";
 import { EnvironmentVariableEditor } from "../../../../_components/environment/environment-variable-editor";
 import { ServicePageTabs } from "../../../../_components/service/service-tabs";
@@ -105,10 +108,12 @@ async function ServiceContent({
       >
         ← {project.name}
       </Link>
-      <h1 className="mt-4 text-xl font-semibold text-gray-900 dark:text-white">
+      <h1 className="mt-4 text-xl font-semibold text-gray-900 dark:text-gray-100">
         {getServiceDisplayName(service)}
       </h1>
       <ServicePageTabs
+        serviceId={resolvedService.id}
+        serviceType={resolvedService.type}
         deployments={deployments}
         loadErrors={loadErrors}
         domainConfig={

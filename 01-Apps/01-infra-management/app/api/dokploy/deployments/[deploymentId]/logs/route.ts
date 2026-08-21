@@ -1,7 +1,10 @@
 import { getServerSession } from "next-auth";
 
 import { authOptions } from "@/auth";
-import { getDokployDeploymentLogs } from "@/lib/dokploy";
+import {
+  getDokployDeploymentLogs,
+  getDokployDeploymentStatus,
+} from "@/lib/dokploy";
 import {
   decorateDeploymentLogs,
   formatDeploymentLogView,
@@ -20,8 +23,21 @@ export async function GET(
   const { deploymentId } = await params;
 
   try {
-    const logs = await getDokployDeploymentLogs(deploymentId);
     const searchParams = new URL(request.url).searchParams;
+    const serviceId = searchParams.get("serviceId") ?? "";
+    const serviceType = searchParams.get("serviceType");
+    const statusPromise =
+      serviceId && (serviceType === "applications" || serviceType === "compose")
+        ? getDokployDeploymentStatus(
+            serviceType,
+            serviceId,
+            deploymentId,
+          ).catch(() => "unknown")
+        : Promise.resolve("unknown");
+    const [logs, deploymentStatus] = await Promise.all([
+      getDokployDeploymentLogs(deploymentId),
+      statusPromise,
+    ]);
     const view = searchParams.get("view");
     const filteredLogs = formatDeploymentLogView(logs, view);
     const output =
@@ -34,6 +50,7 @@ export async function GET(
         headers: {
           "content-type": "text/plain; charset=utf-8",
           "cache-control": "no-store",
+          "x-deployment-status": deploymentStatus,
         },
       },
     );

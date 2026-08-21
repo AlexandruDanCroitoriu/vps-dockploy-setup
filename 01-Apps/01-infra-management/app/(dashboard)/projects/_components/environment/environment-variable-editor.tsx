@@ -71,6 +71,7 @@ export function EnvironmentVariableEditor(props: EnvironmentEditorProps) {
           automaticLayout: true,
           minimap: { enabled: false },
           fontSize: 13,
+          fontWeight: "400",
           lineNumbersMinChars: 3,
           scrollBeyondLastLine: false,
           tabSize: 2,
@@ -87,7 +88,7 @@ export function EnvironmentVariableEditor(props: EnvironmentEditorProps) {
           <input type="hidden" name="env" value={value} />
           <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-white/10">
             <div>
-              <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
                 Environment variables
               </h2>
               <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">

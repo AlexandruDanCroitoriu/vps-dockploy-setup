@@ -51,7 +51,7 @@ export function Sidebar({
                   aria-current={current ? "page" : undefined}
                   className={classes(
                     current
-                      ? "bg-gray-50 text-indigo-600 dark:bg-white/5 dark:text-white"
+                      ? "bg-gray-50 text-indigo-600 dark:bg-white/5 dark:text-gray-100"
                       : "text-gray-700 hover:bg-gray-50 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-white/5",
                     "flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm font-medium",
                   )}

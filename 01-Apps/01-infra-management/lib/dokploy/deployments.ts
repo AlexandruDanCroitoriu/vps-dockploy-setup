@@ -35,3 +35,24 @@ export async function getDokployDeploymentLogs(deploymentId: string) {
   }
   return text;
 }
+
+export async function getDokployDeploymentStatus(
+  type: "applications" | "compose",
+  serviceId: string,
+  deploymentId: string,
+) {
+  const query = new URLSearchParams(
+    type === "applications"
+      ? { applicationId: serviceId }
+      : { composeId: serviceId },
+  );
+  const endpoint =
+    type === "applications" ? "deployment.all" : "deployment.allByCompose";
+  const deployments = normalizeDeployments(
+    await dokployGet<unknown>(`${endpoint}?${query}`),
+  );
+  return (
+    deployments.find((deployment) => deployment.deploymentId === deploymentId)
+      ?.status ?? "unknown"
+  );
+}

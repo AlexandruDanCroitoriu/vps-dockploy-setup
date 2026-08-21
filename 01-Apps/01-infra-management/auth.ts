@@ -85,6 +85,10 @@ function getRequiredEnvironmentVariable(name: string) {
   return value;
 }
 
+export function normalizeAdminPasswordHash(hash: string) {
+  return hash.replaceAll("\\$", "$");
+}
+
 function stringsMatch(left: string, right: string) {
   const leftDigest = createHash("sha256").update(left).digest();
   const rightDigest = createHash("sha256").update(right).digest();
@@ -135,8 +139,8 @@ export const authOptions: NextAuthOptions = {
         }
 
         const adminUsername = getRequiredEnvironmentVariable("ADMIN_USERNAME");
-        const passwordHash = getRequiredEnvironmentVariable(
-          "ADMIN_PASSWORD_HASH",
+        const passwordHash = normalizeAdminPasswordHash(
+          getRequiredEnvironmentVariable("ADMIN_PASSWORD_HASH"),
         );
 
         const [validPassword, validUsername] = await Promise.all([

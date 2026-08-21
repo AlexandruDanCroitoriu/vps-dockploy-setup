@@ -22,11 +22,12 @@ export default async function RootLayout({
   return (
     <html
       lang="en"
-      className={[ isDark ? "dark" : ""]
-        .filter(Boolean)
-        .join(" ")}
+      className={[isDark ? "dark" : ""].filter(Boolean).join(" ")}
     >
-      <body suppressHydrationWarning className="min-h-full flex flex-col">
+      <body
+        suppressHydrationWarning
+        className="flex min-h-full flex-col font-sans"
+      >
         {children}
       </body>
     </html>

@@ -82,7 +82,7 @@ export function DatabaseCredentials({
     return (
       <section className="mt-4 max-w-3xl rounded-lg border border-gray-200 bg-white p-3.5 dark:border-white/10 dark:bg-gray-800/40">
         <div className="mb-2.5 flex items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
             Internal Credentials
           </h2>
           <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium tracking-wide text-gray-500 uppercase dark:bg-white/5 dark:text-gray-400">

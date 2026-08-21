@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { DokployDeployment } from "@/lib/dokploy";
+import type { DokployDeployment, DokployServiceType } from "@/lib/dokploy";
 import { DeploymentList } from "../deployments/deployment-list";
 import { DeploymentLogDialog } from "../deployments/deployment-log-dialog";
 import { DomainManager, type DomainConfig } from "../domains/domain-manager";
@@ -13,11 +13,15 @@ export function ServicePageTabs({
   deployments,
   domainConfig,
   loadErrors,
+  serviceId,
+  serviceType,
 }: {
   overview: React.ReactNode;
   deployments: DokployDeployment[];
   domainConfig: DomainConfig | null;
   loadErrors?: { deployments?: string; domains?: string };
+  serviceId: string;
+  serviceType: DokployServiceType;
 }) {
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [selected, setSelected] = useState<DokployDeployment | null>(null);
@@ -69,6 +73,8 @@ export function ServicePageTabs({
       {selected && (
         <DeploymentLogDialog
           deployment={selected}
+          serviceId={serviceId}
+          serviceType={serviceType}
           onClose={() => setSelected(null)}
         />
       )}

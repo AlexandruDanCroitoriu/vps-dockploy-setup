@@ -9,7 +9,7 @@ export default function ProjectsPage() {
   return (
     <div>
       <div className="flex items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-gray-900 dark:text-white">
+        <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
           Projects
         </h1>
         <CreateProjectDialog />
@@ -28,7 +28,7 @@ function ProjectsLoading() {
       <div className="flex items-center gap-3">
         <span className="size-3 animate-pulse rounded-full bg-indigo-500" />
         <div>
-          <p className="text-sm font-semibold text-gray-900 dark:text-white">
+          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
             Loading projects from Dokploy…
           </p>
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">

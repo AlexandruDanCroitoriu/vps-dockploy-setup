@@ -59,7 +59,7 @@ export function ProjectCard({
       <div className="p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="text-base font-semibold text-gray-900 dark:text-white">
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">
               {editableName ? (
                 <ProjectNameEditor
                   projectId={project.projectId}
@@ -159,7 +159,7 @@ function ServiceCardLoading({ service }: { service: DokployService }) {
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-2">
           <span className="size-2.5 shrink-0 animate-pulse rounded-full bg-gray-400" />
-          <p className="truncate text-sm font-medium text-gray-900 dark:text-white">
+          <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
             {getServiceDisplayName(service)}
           </p>
         </div>
@@ -241,7 +241,7 @@ export function ServiceCard({
             aria-label={status.label}
             className={`size-2.5 shrink-0 rounded-full ${status.dot}`}
           />
-          <p className="truncate text-sm font-medium text-gray-900 dark:text-white">
+          <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
             {href ? (
               <Link
                 href={href}
