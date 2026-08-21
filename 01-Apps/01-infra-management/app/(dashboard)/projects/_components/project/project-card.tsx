@@ -7,11 +7,14 @@ import {
   getDokployLiveServiceStatus,
   isDatabaseService,
   type DokployProject,
+  type DokployGithubProvider,
   type DokployService,
 } from "@/lib/dokploy";
+import type { RepositoryApplication } from "@/lib/github/repository-applications";
 
 import { DatabaseCredentials } from "../database/database-credentials";
 import { AddDatabaseDialog } from "../database/add-database-dialog";
+import { AddApplicationDialog } from "../application/add-application-dialog";
 import { DeployServiceButton } from "../service/deploy-service-button";
 import { EnvironmentVariableEditor } from "../environment/environment-variable-editor";
 import { ProjectNameEditor } from "./project-name-editor";
@@ -33,11 +36,15 @@ export function ProjectCard({
   editableName = false,
   linkServices = false,
   showDeployButtons = false,
+  githubProviders,
+  repositoryApplications,
 }: {
   project: DokployProject;
   editableName?: boolean;
   linkServices?: boolean;
   showDeployButtons?: boolean;
+  githubProviders?: DokployGithubProvider[];
+  repositoryApplications?: RepositoryApplication[];
 }) {
   const services = project.environments.flatMap((environment) =>
     environment.services.map((service) => ({
@@ -48,7 +55,7 @@ export function ProjectCard({
   const serviceCount = services.length;
 
   return (
-    <article className="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-gray-800/40">
+    <article className="overflow-visible rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-gray-800/40">
       <div className="p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
@@ -77,6 +84,17 @@ export function ProjectCard({
             <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600 dark:bg-white/5 dark:text-gray-300">
               {serviceCount} {serviceCount === 1 ? "service" : "services"}
             </span>
+            {githubProviders && repositoryApplications && (
+              <AddApplicationDialog
+                projectId={project.projectId}
+                environments={project.environments.map((environment) => ({
+                  environmentId: environment.environmentId,
+                  name: environment.name,
+                }))}
+                githubProviders={githubProviders}
+                repositoryApplications={repositoryApplications}
+              />
+            )}
             <AddDatabaseDialog
               projectId={project.projectId}
               environments={project.environments.map((environment) => ({

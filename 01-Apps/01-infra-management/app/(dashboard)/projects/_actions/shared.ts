@@ -26,7 +26,7 @@ export function getActionError(
   if (error instanceof DokployApiError && rejectedSubject) {
     return {
       status: "error",
-      message: `Dokploy rejected ${rejectedSubject} (HTTP ${error.status}).`,
+      message: `Dokploy rejected ${rejectedSubject} at ${error.endpoint} (HTTP ${error.status}).`,
     };
   }
   return { status: "error", message: fallback };

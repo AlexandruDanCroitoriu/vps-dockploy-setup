@@ -1,6 +1,8 @@
 # Infra Management
 
-Infra Management is a private, single-user Next.js dashboard for operating a Dokploy instance. It provides project and service browsing, environment editing, deployments and stored logs, database creation and credentials, and domain/DNS management.
+Infra Management is a private, single-user Next.js dashboard for operating a Dokploy instance. It provides project and service browsing, GitHub-backed application creation, environment editing, deployments and stored logs, database creation and credentials, and domain/DNS management.
+
+The Add application dropdown discovers directories under `01-Apps`; selecting one opens a dialog that configures the repository, branch, monorepo build and watch paths, build type, automatic deployments, and an optional HTTPS domain. It uses an installed Dokploy GitHub provider when available and otherwise falls back to the public Git HTTPS URL. Private deployment sources require a Dokploy GitHub provider.
 
 ## Architecture
 
@@ -20,6 +22,12 @@ Copy `.env.example` to `.env.local` for local development and configure:
 - `NEXTAUTH_URL`: public application URL
 - `DOKPLOY_URL`: base URL of the Dokploy instance, without `/api`
 - `DOKPLOY_API_KEY`: API key created in Dokploy for this application
+
+The application dropdown reads folders from GitHub. Its repository defaults to
+this monorepo and can be changed with `GITHUB_REPOSITORY_OWNER`,
+`GITHUB_REPOSITORY_NAME`, `GITHUB_REPOSITORY_BRANCH`, and `GITHUB_APPS_PATH`.
+Set the server-only `GITHUB_TOKEN` when the repository is private; it only needs
+read access to repository contents.
 
 Generate an escaped password hash for a Next.js environment file:
 
