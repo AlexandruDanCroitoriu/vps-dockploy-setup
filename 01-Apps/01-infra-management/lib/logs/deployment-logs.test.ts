@@ -16,6 +16,14 @@ describe("deployment log views", () => {
     expect(formatDeploymentLogView(logs, "errors-only")).toBe(
       "ERROR: failed\n",
     ));
+  it("returns non-error information lines", () =>
+    expect(formatDeploymentLogView(logs, "info-only")).toBe(
+      "starting\ndone\n",
+    ));
+  it("returns only warnings", () =>
+    expect(formatDeploymentLogView(logs, "warnings-only")).toBe(
+      "warning: retry\n",
+    ));
   it("reports when no errors exist", () =>
     expect(formatDeploymentLogView("all good", "errors-only")).toContain(
       "No error lines",

@@ -1,5 +1,6 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import type { DokployDeployment, DokployServiceType } from "@/lib/dokploy";
 import { DeploymentList } from "../deployments/deployment-list";
@@ -23,22 +24,39 @@ export function ServicePageTabs({
   serviceId: string;
   serviceType: DokployServiceType;
 }) {
-  const [activeTab, setActiveTab] = useState<Tab>("overview");
+  const searchParams = useSearchParams();
+  const requestedTab = searchParams.get("tab");
+  const activeTab: Tab =
+    requestedTab === "deployments" || requestedTab === "domains"
+      ? requestedTab
+      : "overview";
   const [selected, setSelected] = useState<DokployDeployment | null>(null);
+
+  function selectTab(tab: Tab) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (tab === "overview") params.delete("tab");
+    else params.set("tab", tab);
+    const query = params.toString();
+    window.history.replaceState(
+      null,
+      "",
+      `${window.location.pathname}${query ? `?${query}` : ""}`,
+    );
+  }
   return (
     <>
       <div className="mt-4 border-b border-gray-200 dark:border-white/10">
         <nav className="flex gap-5" aria-label="Service sections">
           <TabButton
             active={activeTab === "overview"}
-            onClick={() => setActiveTab("overview")}
+            onClick={() => selectTab("overview")}
           >
             Overview
           </TabButton>
           {(deployments.length > 0 || loadErrors?.deployments) && (
             <TabButton
               active={activeTab === "deployments"}
-              onClick={() => setActiveTab("deployments")}
+              onClick={() => selectTab("deployments")}
             >
               Deployment logs{" "}
               <span className="ml-1 rounded-full bg-gray-100 px-1.5 text-[10px] dark:bg-white/5">
@@ -49,7 +67,7 @@ export function ServicePageTabs({
           {domainConfig && (
             <TabButton
               active={activeTab === "domains"}
-              onClick={() => setActiveTab("domains")}
+              onClick={() => selectTab("domains")}
             >
               Domains
             </TabButton>

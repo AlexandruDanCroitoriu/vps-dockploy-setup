@@ -2,7 +2,7 @@
 
 import { ClipboardDocumentIcon } from "@heroicons/react/24/outline";
 import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AppDialog } from "@/components/ui/dialog";
 import type { DokployDeployment, DokployServiceType } from "@/lib/dokploy";
 import styles from "./deployment-log-dialog.module.css";
@@ -18,7 +18,7 @@ const LazyLog = dynamic(
     ),
   },
 );
-type LogView = "chronological" | "errors-first" | "errors-only";
+type LogView = "chronological" | "info-only" | "warnings-only" | "errors-only";
 
 function isActiveDeploymentStatus(status: string) {
   const normalized = status.toLowerCase();
@@ -42,12 +42,27 @@ export function DeploymentLogDialog({
   const [view, setView] = useState<LogView>("chronological");
   const [logs, setLogs] = useState("");
   const [status, setStatus] = useState(deployment.status);
+  const [viewerHeight, setViewerHeight] = useState(560);
+  const viewerContainerRef = useRef<HTMLDivElement>(null);
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">(
     "idle",
   );
   const canLoadStatus =
     serviceType === "applications" || serviceType === "compose";
   const isPolling = canLoadStatus && isActiveDeploymentStatus(status);
+
+  useEffect(() => {
+    const container = viewerContainerRef.current;
+    if (!container) return;
+    const updateHeight = () => {
+      const height = Math.floor(container.getBoundingClientRect().height);
+      if (height > 0) setViewerHeight(height);
+    };
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -115,9 +130,10 @@ export function DeploymentLogDialog({
         <legend className="sr-only">Log view</legend>
         {(
           [
-            ["chronological", "All logs"],
-            ["errors-first", "Errors first"],
-            ["errors-only", "Errors only"],
+            ["info-only", "Info"],
+            ["warnings-only", "Warning"],
+            ["errors-only", "Error"],
+            ["chronological", "All"],
           ] as const
         ).map(([value, label]) => (
           <label key={value} className="cursor-pointer">
@@ -173,11 +189,14 @@ export function DeploymentLogDialog({
             {error}
           </div>
         ) : (
-          <div className="h-[min(70vh,35rem)] overflow-auto rounded-lg bg-[#090d14]">
+          <div
+            ref={viewerContainerRef}
+            className="h-[min(70vh,35rem)] overflow-hidden rounded-lg bg-[#090d14]"
+          >
             <LazyLog
               key={`${deployment.deploymentId}-${view}`}
               text={logs}
-              height={560}
+              height={viewerHeight}
               width="100%"
               caseInsensitive
               enableGutters
