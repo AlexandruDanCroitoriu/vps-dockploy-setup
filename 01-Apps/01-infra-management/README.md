@@ -9,7 +9,6 @@ Infra Management is a private, single-user Next.js dashboard for operating a Dok
 - Server-only Dokploy API integration under `lib/dokploy/`
 - Tailwind CSS 4, Headless UI, Monaco Editor, and React Log Viewer
 
-The app is intentionally designed for one administrator and one application replica. Do not expose it without HTTPS and a strong password.
 
 ## Required environment variables
 
@@ -28,19 +27,9 @@ Generate an escaped password hash for a Next.js environment file:
 node -e 'console.log(require("bcryptjs").hashSync("replace-with-a-strong-password", 12).replaceAll("$", "\\$"))'
 ```
 
-Next.js expands unescaped `$` characters in `.env` files, so use the escaped output there. Paste the normal, unescaped bcrypt hash into Dokploy's environment-variable UI.
-
 Generate the authentication secret with `openssl rand -base64 32`. Keep `AUTH_SECRET` unchanged between deployments; rotating it signs out the current session.
 
 ## Local development
-
-```bash
-npm install
-npm run dev
-```
-
-Open `http://localhost:3000`. Validation commands:
-
 ```bash
 npm run lint
 npm run typecheck
