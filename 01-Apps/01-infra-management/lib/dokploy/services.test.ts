@@ -1,12 +1,16 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 vi.mock("./client", () => ({ dokployGet: vi.fn(), dokployPost: vi.fn() }));
 
-import { dokployPost } from "./client";
+import { dokployGet, dokployPost } from "./client";
 import {
+  getDokployDomainServiceNames,
+  hasDokployServiceContainer,
   reloadDokployService,
+  removeDokployService,
   resolveDokployLiveStatus,
+  startDokployService,
   stopDokployService,
 } from "./services";
 import type { DokployService } from "./types";
@@ -22,6 +26,11 @@ const service: DokployService = {
   status: "down",
   credentials: [],
 };
+
+beforeEach(() => {
+  vi.mocked(dokployGet).mockReset();
+  vi.mocked(dokployPost).mockReset();
+});
 
 describe("live service status", () => {
   it("detects a running compose container", async () => {
@@ -49,6 +58,23 @@ describe("live service status", () => {
   });
 });
 
+describe("service container history", () => {
+  it("recognizes a stopped container as a previous deployment", async () => {
+    vi.mocked(dokployGet).mockResolvedValueOnce({
+      containers: [{ State: "exited" }],
+    });
+
+    await expect(hasDokployServiceContainer(service)).resolves.toBe(true);
+  });
+
+  it("does not query Docker when the service has no app name", async () => {
+    await expect(
+      hasDokployServiceContainer({ ...service, appName: null }),
+    ).resolves.toBe(false);
+    expect(dokployGet).not.toHaveBeenCalled();
+  });
+});
+
 describe("service lifecycle", () => {
   it("reloads an application by app name", async () => {
     await reloadDokployService("applications", "app-1", "web-app");
@@ -73,5 +99,51 @@ describe("service lifecycle", () => {
     expect(dokployPost).toHaveBeenCalledWith("postgres.stop", {
       postgresId: "postgres-1",
     });
+  });
+
+  it("starts a stopped service with its service-specific identifier", async () => {
+    await startDokployService("redis", "redis-1");
+
+    expect(dokployPost).toHaveBeenCalledWith("redis.start", {
+      redisId: "redis-1",
+    });
+  });
+
+  it("removes an application with the application endpoint", async () => {
+    await removeDokployService("applications", "application-1");
+
+    expect(dokployPost).toHaveBeenCalledWith("application.delete", {
+      applicationId: "application-1",
+    });
+  });
+
+  it("removes Compose services and their volumes", async () => {
+    await removeDokployService("compose", "compose-1");
+
+    expect(dokployPost).toHaveBeenCalledWith("compose.delete", {
+      composeId: "compose-1",
+      deleteVolumes: true,
+    });
+  });
+
+  it("removes databases with their database endpoint", async () => {
+    await removeDokployService("postgres", "postgres-1");
+
+    expect(dokployPost).toHaveBeenCalledWith("postgres.remove", {
+      postgresId: "postgres-1",
+    });
+  });
+});
+
+describe("Compose domain services", () => {
+  it("fetches service names from raw Compose before deployment", async () => {
+    vi.mocked(dokployGet).mockResolvedValueOnce(["dbgate"]);
+
+    await expect(getDokployDomainServiceNames(service)).resolves.toEqual([
+      "dbgate",
+    ]);
+    expect(dokployGet).toHaveBeenCalledWith(
+      "compose.loadServices?composeId=compose-1&type=fetch",
+    );
   });
 });

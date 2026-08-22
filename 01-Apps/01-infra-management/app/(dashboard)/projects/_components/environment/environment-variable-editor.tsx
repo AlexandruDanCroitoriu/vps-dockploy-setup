@@ -83,7 +83,7 @@ export function EnvironmentVariableEditor(props: EnvironmentEditorProps) {
 
   if (props.inline) {
     return (
-      <section className="mt-4 max-w-3xl overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-gray-800/40">
+      <section className="mt-4 min-w-0 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-gray-800/40">
         <form action={formAction}>
           <input type="hidden" name="env" value={value} />
           <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-white/10">

@@ -55,8 +55,9 @@ export async function getDokployDomains(
 }
 
 export async function getDokployDomainServerIp(serverId?: string | null) {
+  if (!serverId) return "";
   const payload = await dokployGet<unknown>(
-    `domain.canGenerateTraefikMeDomains?${new URLSearchParams({ serverId: serverId || "" })}`,
+    `domain.canGenerateTraefikMeDomains?${new URLSearchParams({ serverId })}`,
   );
   return typeof payload === "string" ? payload : "";
 }

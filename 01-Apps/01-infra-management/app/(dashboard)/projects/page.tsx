@@ -65,15 +65,17 @@ async function ProjectsContent() {
           No projects were returned by Dokploy.
         </div>
       ) : (
-        <div className="mt-4 grid items-start gap-4 lg:grid-cols-2">
+        <div className="mt-4 columns-1 gap-4 lg:columns-2">
           {projects.map((project) => (
-            <ProjectCard
-              key={project.projectId}
-              project={project}
-              linkServices
-              githubProviders={githubProviders}
-              repositoryApplications={repositoryApplications}
-            />
+            <div key={project.projectId} className="mb-4 break-inside-avoid">
+              <ProjectCard
+                project={project}
+                linkServices
+                serviceActionsMenu
+                githubProviders={githubProviders}
+                repositoryApplications={repositoryApplications}
+              />
+            </div>
           ))}
         </div>
       )}

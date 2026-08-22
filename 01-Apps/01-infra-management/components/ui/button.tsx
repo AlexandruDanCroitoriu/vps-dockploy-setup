@@ -3,6 +3,7 @@ import type { ButtonHTMLAttributes } from "react";
 const variants = {
   primary: "bg-indigo-600 text-white hover:bg-indigo-500",
   success: "bg-emerald-600 text-white hover:bg-emerald-500",
+  danger: "bg-red-600 text-white hover:bg-red-500",
   secondary:
     "border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/5",
   ghost: "text-gray-500 hover:bg-gray-100 dark:hover:bg-white/5",

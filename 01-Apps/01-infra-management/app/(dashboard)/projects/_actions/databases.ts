@@ -1,7 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createDokployDatabase, type DokployDatabaseType } from "@/lib/dokploy";
+import {
+  createDokployDatabase,
+  databaseProjectEnvironmentEntries,
+  getDokployProject,
+  mergeDokployProjectEnv,
+  updateDokployProjectEnv,
+  type DokployDatabaseType,
+} from "@/lib/dokploy";
 import {
   getActionError,
   requireAuthenticatedSession,
@@ -52,8 +59,17 @@ export async function createDatabaseAction(
     return { status: "error", message: "Database details are too long." };
   }
 
+  let databaseCreated = false;
   try {
-    await createDokployDatabase({
+    const project = await getDokployProject(projectId);
+    if (
+      !project?.environments.some(
+        (environment) => environment.environmentId === environmentId,
+      )
+    ) {
+      return { status: "error", message: "Invalid project environment." };
+    }
+    const credentials = await createDokployDatabase({
       type,
       environmentId,
       name,
@@ -61,10 +77,37 @@ export async function createDatabaseAction(
       databaseUser: needsUser ? databaseUser : undefined,
       databasePassword,
     });
+    databaseCreated = true;
+    const entries = databaseProjectEnvironmentEntries(type, name, credentials);
+    if (
+      !credentials.some(
+        ({ label, value }) => label === "Internal Host" && value,
+      )
+    ) {
+      return {
+        status: "error",
+        message:
+          "Database created, but Dokploy did not return its internal host.",
+      };
+    }
+    await updateDokployProjectEnv(
+      projectId,
+      mergeDokployProjectEnv(project.env, entries),
+    );
     revalidatePath("/projects");
     revalidatePath(`/projects/${projectId}`);
-    return { status: "success", message: "Database created." };
+    return {
+      status: "success",
+      message: "Database created and project credentials updated.",
+    };
   } catch (error) {
+    if (databaseCreated) {
+      return {
+        status: "error",
+        message:
+          "Database created, but its credentials could not be saved to the project variables.",
+      };
+    }
     return getActionError(
       error,
       "Unable to create the database.",

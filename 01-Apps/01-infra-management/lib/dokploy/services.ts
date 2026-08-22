@@ -76,6 +76,16 @@ export const getDokployLiveServiceStatus = cache(
   async (service: DokployService) => resolveDokployLiveStatus(service),
 );
 
+export async function hasDokployServiceContainer(service: DokployService) {
+  if (!service.appName) return false;
+  const query = new URLSearchParams({ appName: service.appName });
+  if (service.serverId) query.set("serverId", service.serverId);
+  const containers = containersFromResponse(
+    await dokployGet<unknown>(`docker.getContainersByAppNameMatch?${query}`),
+  );
+  return containers.length > 0;
+}
+
 export async function getDokployService(
   projectId: string,
   type: DokployServiceType,
@@ -137,11 +147,38 @@ export async function stopDokployService(
   });
 }
 
+export async function startDokployService(
+  type: DokployServiceType,
+  serviceId: string,
+) {
+  const endpoint = SERVICE_ENDPOINTS[type];
+  await dokployPost(`${endpoint.path}.start`, {
+    [endpoint.idParameter]: serviceId,
+  });
+}
+
+export async function removeDokployService(
+  type: DokployServiceType,
+  serviceId: string,
+) {
+  const endpoint = SERVICE_ENDPOINTS[type];
+  const action =
+    type === "applications"
+      ? "delete"
+      : type === "compose"
+        ? "delete"
+        : "remove";
+  await dokployPost(`${endpoint.path}.${action}`, {
+    [endpoint.idParameter]: serviceId,
+    ...(type === "compose" ? { deleteVolumes: true } : {}),
+  });
+}
+
 export async function getDokployDomainServiceNames(service: DokployService) {
   if (service.type === "applications")
     return [service.appName || service.name].filter(Boolean);
   if (service.type !== "compose") return [];
-  const query = new URLSearchParams({ composeId: service.id, type: "cache" });
+  const query = new URLSearchParams({ composeId: service.id, type: "fetch" });
   const payload = await dokployGet<unknown>(`compose.loadServices?${query}`);
   const candidates = Array.isArray(payload)
     ? payload

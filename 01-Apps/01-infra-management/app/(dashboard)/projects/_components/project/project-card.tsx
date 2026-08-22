@@ -1,51 +1,39 @@
-import {
-  ArrowTopRightOnSquareIcon,
-  CubeIcon,
-} from "@heroicons/react/24/outline";
+import { CubeIcon } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { Suspense } from "react";
 
 import {
-  getServiceTypeLabel,
   getDokployDomains,
-  getDokployLiveServiceStatus,
+  getDokployServiceStatus,
+  getServiceTypeLabel,
   isDatabaseService,
-  type DokployDomain,
   type DokployProject,
   type DokployGithubProvider,
   type DokployService,
 } from "@/lib/dokploy";
+import { composeServiceOptions } from "@/compose-services/registry";
 import type { RepositoryApplication } from "@/lib/github/repository-applications";
 
-import { DatabaseCredentials } from "../database/database-credentials";
 import { AddDatabaseDialog } from "../database/add-database-dialog";
 import { AddApplicationDialog } from "../application/add-application-dialog";
-import { ServiceLifecycleButtons } from "../service/service-lifecycle-buttons";
+import { AddComposeDialog } from "../compose/add-compose-dialog";
 import { EnvironmentVariableEditor } from "../environment/environment-variable-editor";
 import { ProjectNameEditor } from "./project-name-editor";
-
-const serviceStatusStyles = {
-  running: { label: "Running", dot: "bg-emerald-500" },
-  deploying: { label: "Deploying", dot: "animate-pulse bg-amber-400" },
-  down: { label: "Down", dot: "bg-red-500" },
-} as const;
-
-export function getServiceDisplayName(service: DokployService) {
-  return isDatabaseService(service.type)
-    ? getServiceTypeLabel(service.type)
-    : service.name;
-}
+import { ProjectSettingsMenu } from "./project-settings-menu";
+import { getServiceDisplayName, ServiceCard } from "../service/service-card";
 
 export function ProjectCard({
   project,
   editableName = false,
   linkServices = false,
+  serviceActionsMenu = false,
   githubProviders,
   repositoryApplications,
 }: {
   project: DokployProject;
   editableName?: boolean;
   linkServices?: boolean;
+  serviceActionsMenu?: boolean;
   githubProviders?: DokployGithubProvider[];
   repositoryApplications?: RepositoryApplication[];
 }) {
@@ -58,7 +46,7 @@ export function ProjectCard({
   const serviceCount = services.length;
 
   return (
-    <article className="overflow-visible rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-gray-800/40">
+    <article className="relative overflow-visible rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-gray-800/40">
       <div className="p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
@@ -114,11 +102,25 @@ export function ProjectCard({
                 name: environment.name,
               }))}
             />
+            <AddComposeDialog
+              projectId={project.projectId}
+              environmentId={project.environments[0]?.environmentId}
+              definitions={composeServiceOptions}
+            />
             <EnvironmentVariableEditor
               target="project"
               targetId={project.projectId}
               targetName={project.name}
               initialValue={project.env}
+            />
+            <ProjectSettingsMenu
+              projectId={project.projectId}
+              projectName={project.name}
+              services={services.map(({ service }) => ({
+                id: service.id,
+                type: service.type,
+                name: getServiceDisplayName(service),
+              }))}
             />
           </div>
         </div>
@@ -144,6 +146,7 @@ export function ProjectCard({
               services={services.map(({ service }) => service)}
               projectId={project.projectId}
               linkServices={linkServices}
+              serviceActionsMenu={serviceActionsMenu}
             />
           </Suspense>
         )}
@@ -180,13 +183,15 @@ async function ProjectServices({
   services,
   projectId,
   linkServices,
+  serviceActionsMenu,
 }: {
   services: DokployService[];
   projectId: string;
   linkServices: boolean;
+  serviceActionsMenu: boolean;
 }) {
   const [statusResults, domainResults] = await Promise.all([
-    Promise.allSettled(services.map(getDokployLiveServiceStatus)),
+    Promise.allSettled(services.map(getDokployServiceStatus)),
     Promise.allSettled(
       services.map((service) =>
         service.type === "applications" || service.type === "compose"
@@ -212,6 +217,7 @@ async function ProjectServices({
               : []
           }
           projectId={projectId}
+          serviceActionsMenu={serviceActionsMenu}
           href={
             linkServices
               ? `/projects/${encodeURIComponent(projectId)}/services/${service.type}/${encodeURIComponent(service.id)}`
@@ -220,107 +226,5 @@ async function ProjectServices({
         />
       ))}
     </ul>
-  );
-}
-
-export function ServiceCard({
-  service,
-  href,
-  showCredentialsButton = true,
-  showEnvironmentEditor = true,
-  projectId,
-  domains = [],
-}: {
-  service: DokployService;
-  href?: string;
-  showCredentialsButton?: boolean;
-  showEnvironmentEditor?: boolean;
-  projectId?: string;
-  domains?: DokployDomain[];
-}) {
-  const resolvedService = service;
-  const status = serviceStatusStyles[resolvedService.status];
-  const isDatabase = isDatabaseService(resolvedService.type);
-
-  return (
-    <li className="flex min-w-0 items-center gap-2.5 rounded-md border border-gray-200 bg-white px-3 py-2.5 dark:border-white/10 dark:bg-gray-900/50">
-      <CubeIcon className="size-4 shrink-0 text-indigo-500" />
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-center gap-2">
-          <span
-            title={status.label}
-            aria-label={status.label}
-            className={`size-2.5 shrink-0 rounded-full ${status.dot}`}
-          />
-          <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
-            {href ? (
-              <Link
-                href={href}
-                className="hover:text-indigo-600 dark:hover:text-indigo-300"
-              >
-                {getServiceDisplayName(resolvedService)}
-              </Link>
-            ) : (
-              getServiceDisplayName(resolvedService)
-            )}
-          </p>
-        </div>
-        <p className="truncate text-xs text-gray-500 dark:text-gray-400">
-          {isDatabase ? (
-            <>Database · {status.label}</>
-          ) : (
-            <>
-              {getServiceTypeLabel(resolvedService.type)}
-              {` · ${status.label}`}
-            </>
-          )}
-        </p>
-        {domains.length > 0 && (
-          <div className="mt-1 flex min-w-0 flex-wrap gap-x-3 gap-y-1">
-            {domains.map((domain) => (
-              <a
-                key={domain.domainId}
-                href={`${domain.https ? "https" : "http"}://${domain.host}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                title={`Open ${domain.host}`}
-                className="inline-flex min-w-0 items-center gap-1 text-[11px] text-indigo-600 hover:text-indigo-500 hover:underline dark:text-indigo-300 dark:hover:text-indigo-200"
-              >
-                <span className="max-w-52 truncate">{domain.host}</span>
-                <ArrowTopRightOnSquareIcon
-                  className="size-3 shrink-0"
-                  aria-hidden="true"
-                />
-              </a>
-            ))}
-          </div>
-        )}
-      </div>
-      {!isDatabase && showEnvironmentEditor && (
-        <EnvironmentVariableEditor
-          target="service"
-          targetId={resolvedService.id}
-          targetName={resolvedService.name}
-          serviceType={resolvedService.type}
-          initialValue={resolvedService.env}
-        />
-      )}
-      {isDatabase && showCredentialsButton && (
-        <DatabaseCredentials
-          credentials={resolvedService.credentials}
-          databaseName={getServiceTypeLabel(resolvedService.type)}
-        />
-      )}
-      {projectId && (
-        <ServiceLifecycleButtons
-          projectId={projectId}
-          serviceId={resolvedService.id}
-          serviceName={getServiceDisplayName(resolvedService)}
-          appName={resolvedService.appName ?? ""}
-          serviceType={resolvedService.type}
-          status={resolvedService.status}
-        />
-      )}
-    </li>
   );
 }

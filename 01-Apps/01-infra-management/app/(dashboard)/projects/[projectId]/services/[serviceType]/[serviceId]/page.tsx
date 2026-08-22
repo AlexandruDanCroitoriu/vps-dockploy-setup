@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
@@ -9,6 +8,7 @@ import {
   getDokployDomains,
   getDokployRunningContainerOptions,
   getDokployProject,
+  getDokployRawComposeFile,
   getDokployService,
   getDokployServiceStatus,
   type DokployServiceType,
@@ -17,9 +17,11 @@ import {
 import {
   getServiceDisplayName,
   ServiceCard,
-} from "../../../../_components/project/project-card";
+} from "../../../../_components/service/service-card";
 import { DatabaseCredentials } from "../../../../_components/database/database-credentials";
+import { ComposeFileEditor } from "../../../../_components/compose/compose-file-editor";
 import { EnvironmentVariableEditor } from "../../../../_components/environment/environment-variable-editor";
+import { ResizableEditorPanels } from "../../../../_components/service/resizable-editor-panels";
 import { ServicePageTabs } from "../../../../_components/service/service-tabs";
 import { ReloadButton } from "../../../../_components/reload-button";
 
@@ -75,13 +77,23 @@ async function ServiceContent({
         resolvedService.id,
       )
     : Promise.resolve([]);
-  const [deploymentsResult, namesResult, containersResult, domainsResult] =
-    await Promise.allSettled([
-      getDokployDeployments(resolvedService),
-      getDokployDomainServiceNames(resolvedService),
-      getDokployRunningContainerOptions(resolvedService),
-      domainsPromise,
-    ]);
+  const composeFilePromise =
+    resolvedService.type === "compose"
+      ? getDokployRawComposeFile(resolvedService.id)
+      : Promise.resolve(null);
+  const [
+    deploymentsResult,
+    namesResult,
+    containersResult,
+    domainsResult,
+    composeFileResult,
+  ] = await Promise.allSettled([
+    getDokployDeployments(resolvedService),
+    getDokployDomainServiceNames(resolvedService),
+    getDokployRunningContainerOptions(resolvedService),
+    domainsPromise,
+    composeFilePromise,
+  ]);
   const deployments =
     deploymentsResult.status === "fulfilled" ? deploymentsResult.value : [];
   const domainServiceNames =
@@ -90,6 +102,8 @@ async function ServiceContent({
     containersResult.status === "fulfilled" ? containersResult.value : [];
   const domains =
     domainsResult.status === "fulfilled" ? domainsResult.value : [];
+  const composeFile =
+    composeFileResult.status === "fulfilled" ? composeFileResult.value : null;
   const loadErrors = {
     deployments:
       deploymentsResult.status === "rejected"
@@ -100,22 +114,28 @@ async function ServiceContent({
         ? "Unable to load configured domains."
         : "",
   };
+  const fallbackServiceNames =
+    resolvedService.type === "applications"
+      ? [resolvedService.appName || resolvedService.name]
+      : [];
+  const resolvedDomainServiceNames =
+    domainServiceNames.length > 0 ? domainServiceNames : fallbackServiceNames;
 
   return (
     <div>
-      <Link
-        href={`/projects/${encodeURIComponent(project.projectId)}`}
-        className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-300 dark:hover:text-indigo-200"
-      >
-        ← {project.name}
-      </Link>
-      <div className="mt-4 flex items-center justify-between gap-3">
-        <h1 className="min-w-0 truncate text-xl font-semibold text-gray-900 dark:text-gray-100">
-          {getServiceDisplayName(service)}
-        </h1>
-        <ReloadButton />
-      </div>
+      <ul>
+        <ServiceCard
+          service={resolvedService}
+          domains={domains}
+          projectId={project.projectId}
+          serviceActionsMenu
+          serviceDeleteRedirectHref={`/projects/${encodeURIComponent(project.projectId)}`}
+          showCredentialsButton={!isDatabase}
+          showEnvironmentEditor={false}
+        />
+      </ul>
       <ServicePageTabs
+        actions={<ReloadButton />}
         serviceId={resolvedService.id}
         serviceType={resolvedService.type}
         deployments={deployments}
@@ -129,30 +149,19 @@ async function ServiceContent({
                 serviceType: resolvedService.type,
                 appName: resolvedService.appName || resolvedService.name,
                 domains,
-                serviceNames:
-                  domainServiceNames.length > 0
-                    ? domainServiceNames
-                    : [resolvedService.appName || resolvedService.name],
+                serviceNames: resolvedDomainServiceNames,
                 serviceOptions:
                   runningContainerOptions.length > 0
                     ? runningContainerOptions
-                    : (domainServiceNames.length > 0
-                        ? domainServiceNames
-                        : [resolvedService.appName || resolvedService.name]
-                      ).map((name) => ({ value: name, label: name })),
+                    : resolvedDomainServiceNames.map((name) => ({
+                        value: name,
+                        label: name,
+                      })),
               }
             : null
         }
         overview={
           <>
-            <ul className="mt-4 max-w-3xl">
-              <ServiceCard
-                service={resolvedService}
-                domains={domains}
-                showCredentialsButton={!isDatabase}
-                showEnvironmentEditor={false}
-              />
-            </ul>
             {isDatabase && (
               <DatabaseCredentials
                 credentials={resolvedService.credentials}
@@ -160,15 +169,46 @@ async function ServiceContent({
                 inline
               />
             )}
-            {!isDatabase && (
-              <EnvironmentVariableEditor
-                target="service"
-                targetId={resolvedService.id}
-                targetName={resolvedService.name}
-                serviceType={resolvedService.type}
-                initialValue={resolvedService.env}
-                inline
+            {!isDatabase && composeFile !== null && (
+              <ResizableEditorPanels
+                left={
+                  <ComposeFileEditor
+                    composeId={resolvedService.id}
+                    initialValue={composeFile}
+                  />
+                }
+                right={
+                  <EnvironmentVariableEditor
+                    target="service"
+                    targetId={resolvedService.id}
+                    targetName={resolvedService.name}
+                    serviceType={resolvedService.type}
+                    initialValue={resolvedService.env}
+                    inline
+                  />
+                }
               />
+            )}
+            {!isDatabase && composeFile === null && (
+              <div className="[&>section]:max-w-none">
+                <EnvironmentVariableEditor
+                  target="service"
+                  targetId={resolvedService.id}
+                  targetName={resolvedService.name}
+                  serviceType={resolvedService.type}
+                  initialValue={resolvedService.env}
+                  inline
+                />
+                {resolvedService.type === "compose" &&
+                  composeFileResult.status === "rejected" && (
+                    <p
+                      role="alert"
+                      className="rounded-md border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-600 dark:text-red-400"
+                    >
+                      Unable to load the raw Compose file.
+                    </p>
+                  )}
+              </div>
             )}
           </>
         }
@@ -179,7 +219,7 @@ async function ServiceContent({
 
 function ServiceLoading() {
   return (
-    <div className="max-w-3xl rounded-lg border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-gray-800/40">
+    <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-gray-800/40">
       <div className="h-5 w-40 animate-pulse rounded bg-gray-100 dark:bg-white/5" />
       <div className="mt-4 h-16 animate-pulse rounded-md bg-gray-100 dark:bg-white/5" />
     </div>

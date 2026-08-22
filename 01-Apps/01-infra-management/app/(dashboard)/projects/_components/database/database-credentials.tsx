@@ -80,7 +80,7 @@ export function DatabaseCredentials({
 
   if (inline) {
     return (
-      <section className="mt-4 max-w-3xl rounded-lg border border-gray-200 bg-white p-3.5 dark:border-white/10 dark:bg-gray-800/40">
+      <section className="mt-4 rounded-lg border border-gray-200 bg-white p-3.5 dark:border-white/10 dark:bg-gray-800/40">
         <div className="mb-2.5 flex items-center justify-between gap-3">
           <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
             Internal Credentials

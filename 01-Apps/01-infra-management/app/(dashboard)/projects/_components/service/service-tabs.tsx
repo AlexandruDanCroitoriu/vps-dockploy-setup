@@ -11,6 +11,7 @@ type Tab = "overview" | "deployments" | "domains";
 
 export function ServicePageTabs({
   overview,
+  actions,
   deployments,
   domainConfig,
   loadErrors,
@@ -18,6 +19,7 @@ export function ServicePageTabs({
   serviceType,
 }: {
   overview: React.ReactNode;
+  actions?: React.ReactNode;
   deployments: DokployDeployment[];
   domainConfig: DomainConfig | null;
   loadErrors?: { deployments?: string; domains?: string };
@@ -45,8 +47,8 @@ export function ServicePageTabs({
   }
   return (
     <>
-      <div className="mt-4 border-b border-gray-200 dark:border-white/10">
-        <nav className="flex gap-5" aria-label="Service sections">
+      <div className="mt-4 flex items-end justify-between gap-4 border-b border-gray-200 dark:border-white/10">
+        <nav className="flex min-w-0 gap-5" aria-label="Service sections">
           <TabButton
             active={activeTab === "overview"}
             onClick={() => selectTab("overview")}
@@ -73,6 +75,7 @@ export function ServicePageTabs({
             </TabButton>
           )}
         </nav>
+        {actions && <div className="shrink-0 pb-2">{actions}</div>}
       </div>
       {activeTab === "overview" && overview}
       {activeTab === "deployments" &&
@@ -124,7 +127,7 @@ function LoadError({ message }: { message: string }) {
   return (
     <p
       role="alert"
-      className="mt-4 max-w-3xl rounded-md border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-600"
+      className="mt-4 rounded-md border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-600"
     >
       {message}
     </p>

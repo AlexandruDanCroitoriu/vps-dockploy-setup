@@ -3,6 +3,13 @@
 import { revalidatePath } from "next/cache";
 import {
   createDokployProject,
+  deployDokployService,
+  getDokployProject,
+  getDokployServiceStatus,
+  hasDokployServiceContainer,
+  reloadDokployService,
+  removeDokployProject,
+  stopDokployService,
   updateDokployProjectEnv,
   updateDokployProjectName,
 } from "@/lib/dokploy";
@@ -12,6 +19,118 @@ import {
   SESSION_EXPIRED_STATE,
   type ActionState,
 } from "./shared";
+
+export async function deleteProjectAction(
+  projectId: string,
+  previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  void previousState;
+  void formData;
+  if (!(await requireAuthenticatedSession())) return SESSION_EXPIRED_STATE;
+  if (!projectId)
+    return { status: "error", message: "Invalid project identifier." };
+
+  try {
+    const project = await getDokployProject(projectId);
+    if (!project) return { status: "error", message: "Project not found." };
+    const serviceCount = project.environments.reduce(
+      (count, environment) => count + environment.services.length,
+      0,
+    );
+    if (serviceCount > 0) {
+      return {
+        status: "error",
+        message: `Remove the project's ${serviceCount} services before deleting it.`,
+      };
+    }
+    await removeDokployProject(projectId);
+    revalidatePath("/projects");
+    return { status: "success", message: "Project deleted." };
+  } catch (error) {
+    return getActionError(
+      error,
+      "Unable to delete the project.",
+      "the project deletion",
+    );
+  }
+}
+
+export async function setProjectServicesStateAction(
+  projectId: string,
+  previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  void previousState;
+  if (!(await requireAuthenticatedSession())) return SESSION_EXPIRED_STATE;
+  const requestedOperation = formData.get("operation")?.toString();
+  if (
+    !projectId ||
+    (requestedOperation !== "start" && requestedOperation !== "stop")
+  )
+    return { status: "error", message: "Invalid project operation." };
+  const operation = requestedOperation;
+
+  try {
+    const project = await getDokployProject(projectId);
+    if (!project) return { status: "error", message: "Project not found." };
+    const projectServices = project.environments.flatMap(
+      (environment) => environment.services,
+    );
+    const resolvedServices =
+      operation === "start"
+        ? await Promise.all(
+            projectServices.map((service) =>
+              getDokployServiceStatus(service).catch(() => service),
+            ),
+          )
+        : projectServices;
+    const services = resolvedServices.filter((service) =>
+      operation === "start"
+        ? service.status !== "running"
+        : service.status === "running",
+    );
+    const results = await Promise.allSettled(
+      services.map(async (service) => {
+        if (operation === "stop") {
+          await stopDokployService(service.type, service.id);
+          return;
+        }
+        if (await hasDokployServiceContainer(service)) {
+          await reloadDokployService(
+            service.type,
+            service.id,
+            service.appName ?? "",
+          );
+        } else {
+          await deployDokployService(service.type, service.id);
+        }
+      }),
+    );
+    const failures = results.filter((result) => result.status === "rejected");
+    revalidatePath("/projects");
+    revalidatePath(`/projects/${projectId}`);
+    if (failures.length > 0) {
+      return {
+        status: "error",
+        message: `${results.length - failures.length} of ${results.length} services ${operation === "start" ? "started" : "stopped"}.`,
+      };
+    }
+    return {
+      status: "success",
+      message:
+        services.length === 0
+          ? `All services are already ${operation === "start" ? "running" : "stopped"}.`
+          : `All services ${operation === "start" ? "started" : "stopped"}.`,
+    };
+  } catch (error) {
+    return getActionError(
+      error,
+      `Unable to ${operation} the project services.`,
+      `the project ${operation}`,
+    );
+  }
+}
 
 export async function createProjectAction(
   previousState: ActionState,

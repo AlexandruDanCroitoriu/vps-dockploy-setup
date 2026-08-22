@@ -73,12 +73,18 @@ export function DomainManager({ config }: { config: DomainConfig }) {
   }
 
   return (
-    <div className="mt-4 max-w-3xl space-y-4">
+    <div className="mt-4 space-y-4">
       <div className="flex justify-end">
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-500"
+          disabled={config.serviceOptions.length === 0}
+          title={
+            config.serviceOptions.length === 0
+              ? "No Compose services were found"
+              : "Add domain"
+          }
+          className="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <PlusIcon className="size-4" aria-hidden="true" />
           New domain

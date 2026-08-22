@@ -12,7 +12,7 @@ export function DeploymentList({
   onOpen: (deployment: DokployDeployment) => void;
 }) {
   return (
-    <div className="mt-4 max-w-3xl overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-gray-800/40">
+    <div className="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-gray-800/40">
       <ul className="divide-y divide-gray-200 dark:divide-white/10">
         {deployments.map((deployment) => (
           <li key={deployment.deploymentId}>

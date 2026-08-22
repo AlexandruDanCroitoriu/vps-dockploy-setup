@@ -59,7 +59,9 @@ export async function createDomainAction(
   const allowedNames = new Set([
     ...containerOptions.map(({ value }) => value),
     ...configuredNames,
-    service.appName || service.name,
+    ...(service.type === "applications"
+      ? [service.appName || service.name]
+      : []),
   ]);
   if (!allowedNames.has(serviceName))
     return { status: "error", message: "Select a valid service." };
@@ -148,6 +150,9 @@ export async function validateDomainAction(
 ) {
   if (!(await requireAuthenticatedSession()))
     return { status: "error" as const, message: SESSION_EXPIRED_STATE.message };
+  const host = domain.trim().toLowerCase();
+  if (!isValidHostname(host))
+    return { status: "error" as const, message: "Invalid domain hostname." };
   try {
     const service = await getDokployService(projectId, type, serviceId);
     if (!service)
@@ -155,9 +160,14 @@ export async function validateDomainAction(
     const serverIp = await getDokployDomainServerIp(service.serverId);
     return {
       status: "success" as const,
-      result: await validateDokployDomain(domain, serverIp),
+      result: await validateDokployDomain(host, serverIp),
     };
-  } catch {
-    return { status: "error" as const, message: "Unable to validate DNS." };
+  } catch (error) {
+    const state = getActionError(
+      error,
+      "Unable to validate DNS. Check the Dokploy server IP configuration.",
+      "DNS validation",
+    );
+    return { status: "error" as const, message: state.message };
   }
 }

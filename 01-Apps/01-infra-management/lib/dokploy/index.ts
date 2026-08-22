@@ -1,5 +1,6 @@
 export * from "./constants";
 export * from "./applications";
+export * from "./composes";
 export * from "./databases";
 export * from "./deployments";
 export * from "./domains";

@@ -42,6 +42,50 @@ export async function updateDokployProjectEnv(projectId: string, env: string) {
   await dokployPost("project.update", { projectId, env });
 }
 
+export function mergeDokployProjectEnv(
+  current: string,
+  entries: Readonly<Record<string, string>>,
+) {
+  const pending = new Map(Object.entries(entries));
+  const managedKeys = new Set(pending.keys());
+  const written = new Set<string>();
+  const lines = current ? current.replaceAll("\r\n", "\n").split("\n") : [];
+  const output = lines.flatMap((line) => {
+    const match = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/);
+    const key = match?.[1];
+    if (!key || !managedKeys.has(key)) return [line];
+    if (written.has(key)) return [];
+    written.add(key);
+    const value = pending.get(key) ?? "";
+    pending.delete(key);
+    return [`${key}=${JSON.stringify(value)}`];
+  });
+
+  if (pending.size > 0 && output.some((line) => line.trim())) output.push("");
+  for (const [key, value] of pending) {
+    output.push(`${key}=${JSON.stringify(value)}`);
+  }
+  return output.join("\n");
+}
+
+export function parseDokployEnvironmentEntries(document: string) {
+  const entries: Record<string, string> = {};
+  for (const line of document.replaceAll("\r\n", "\n").split("\n")) {
+    const match = line.match(
+      /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/,
+    );
+    if (!match) continue;
+    const [, key, rawValue] = match;
+    try {
+      const parsed: unknown = JSON.parse(rawValue);
+      entries[key] = typeof parsed === "string" ? parsed : rawValue;
+    } catch {
+      entries[key] = rawValue;
+    }
+  }
+  return entries;
+}
+
 export async function createDokployProject(name: string, description?: string) {
   await dokployPost("project.create", {
     name,
@@ -54,4 +98,8 @@ export async function updateDokployProjectName(
   name: string,
 ) {
   await dokployPost("project.update", { projectId, name });
+}
+
+export async function removeDokployProject(projectId: string) {
+  await dokployPost("project.remove", { projectId });
 }

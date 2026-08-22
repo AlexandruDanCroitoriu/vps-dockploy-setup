@@ -50,6 +50,7 @@ async function ProjectContent({
           project={project}
           editableName
           linkServices
+          serviceActionsMenu
           githubProviders={githubProviders}
           repositoryApplications={repositoryApplications}
         />
