@@ -39,10 +39,7 @@ export async function createApplicationAction(
   const repository = field(formData, "repository");
   const branch = field(formData, "branch");
   const buildPath = field(formData, "buildPath");
-  const buildType = field(
-    formData,
-    "buildType",
-  ) as DokployApplicationBuildType;
+  const buildType = field(formData, "buildType") as DokployApplicationBuildType;
   const dockerfile = field(formData, "dockerfile");
   const dockerContextPath = field(formData, "dockerContextPath");
   const publishDirectory = field(formData, "publishDirectory");
@@ -71,7 +68,8 @@ export async function createApplicationAction(
   if (!APP_NAME_PATTERN.test(name) || name.length > 63) {
     return {
       status: "error",
-      message: "Name must be 1–63 letters, numbers, dots, dashes, or underscores.",
+      message:
+        "Name must be 1–63 letters, numbers, dots, dashes, or underscores.",
     };
   }
   if (

@@ -43,7 +43,6 @@ administrator, one application replica, and server-side access to Dokploy.
 - `tests/e2e/` contains Playwright browser tests. Unit and component tests are
   colocated with the source they cover.
 
-
 ## Authentication architecture
 
 - This is intentionally a single-user application deployed as one Dockploy/Next.js replica. Do not add user registration, a user database, Redis, OAuth providers, roles, or multi-user behavior unless the user explicitly changes that requirement.

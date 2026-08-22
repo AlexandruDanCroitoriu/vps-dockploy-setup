@@ -16,10 +16,8 @@ type GithubContent = {
 
 export function getApplicationRepositoryConfig() {
   return {
-    owner:
-      process.env.GITHUB_REPOSITORY_OWNER || "AlexandruDanCroitoriu",
-    repository:
-      process.env.GITHUB_REPOSITORY_NAME || "vps-dockploy-setup",
+    owner: process.env.GITHUB_REPOSITORY_OWNER || "AlexandruDanCroitoriu",
+    repository: process.env.GITHUB_REPOSITORY_NAME || "vps-dockploy-setup",
     branch: process.env.GITHUB_REPOSITORY_BRANCH || "main",
     appsPath: process.env.GITHUB_APPS_PATH || "01-Apps",
   };

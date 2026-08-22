@@ -13,7 +13,7 @@ test("rejects invalid credentials", async ({ page }) => {
   await page.getByLabel("Username").fill("invalid");
   await page.getByLabel("Password").fill("invalid");
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("alert")).toContainText(
-    "Invalid username or password",
-  );
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Invalid username or password" }),
+  ).toContainText("Invalid username or password");
 });
