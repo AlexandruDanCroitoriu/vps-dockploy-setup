@@ -119,4 +119,20 @@ describe("GitHub applications", () => {
       },
     );
   });
+
+  it("saves generated application environment variables", async () => {
+    vi.mocked(dokployPost).mockResolvedValueOnce({
+      applicationId: "application-1",
+    });
+
+    await createDokployGithubApplication({
+      ...input,
+      environmentVariables: 'AUTH_SECRET="generated-secret"',
+    });
+
+    expect(dokployPost).toHaveBeenCalledWith("application.saveEnvironment", {
+      applicationId: "application-1",
+      env: 'AUTH_SECRET="generated-secret"',
+    });
+  });
 });

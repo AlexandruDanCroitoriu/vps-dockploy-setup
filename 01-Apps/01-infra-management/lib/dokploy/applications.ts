@@ -35,6 +35,7 @@ export type CreateDokployGithubApplicationInput = {
   publishDirectory?: string;
   isStaticSpa?: boolean;
   autoDeploy: boolean;
+  environmentVariables?: string;
   domain?: {
     host: string;
     port: number;
@@ -132,6 +133,12 @@ export async function createDokployGithubApplication(
       autoDeploy: input.autoDeploy,
       watchPaths: input.watchPaths,
     });
+    if (input.environmentVariables) {
+      await dokployPost("application.saveEnvironment", {
+        applicationId,
+        env: input.environmentVariables,
+      });
+    }
     if (input.domain) {
       await createDokployDomain({
         type: "applications",

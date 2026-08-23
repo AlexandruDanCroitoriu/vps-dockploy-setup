@@ -70,7 +70,10 @@ Infra Management using the repository application picker.
 2. Use the Node/Next.js build type, run `npm run build`, and start with `npm start`.
    The repository pins Nixpacks to Node 22 and includes the native build tools
    required by `better-sqlite3`; no extra build environment variables are needed.
-3. Configure every required environment variable. Set `NEXTAUTH_URL` to the final HTTPS URL.
+3. When created from the repository application picker, the app automatically
+   uses the active instance's default service credentials and generates its
+   `ADMIN_PASSWORD_HASH`, `AUTH_SECRET`, and `NEXTAUTH_URL`. For a manually
+   created deployment, configure every required environment variable yourself.
 4. Expose port `3000`, attach the public domain, and enable HTTPS.
 5. Mount persistent application storage at `/app/data`. The application writes
    `/app/data/infra-management.sqlite` automatically. Without that mount,
