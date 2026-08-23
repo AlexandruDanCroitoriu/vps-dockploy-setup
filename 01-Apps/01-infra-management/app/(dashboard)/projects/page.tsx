@@ -6,6 +6,7 @@ import {
   getDokployProjects,
 } from "@/lib/dokploy";
 import { getRepositoryApplicationsResult } from "@/lib/github/repository-applications";
+import { getUnavailableComposeServiceDefinitionIds } from "@/compose-services/registry";
 
 import { ProjectCard } from "./_components/project/project-card";
 import { CreateProjectDialog } from "./_components/project/create-project-dialog";
@@ -61,6 +62,8 @@ async function ProjectsContent() {
       getRepositoryApplicationsResult(),
       getActiveDokployConfiguration(),
     ]);
+  const unavailableComposeDefinitionIds =
+    getUnavailableComposeServiceDefinitionIds(projects);
 
   return (
     <>
@@ -84,6 +87,9 @@ async function ProjectsContent() {
                   username: activeInstance?.defaultServiceUsername ?? "admin",
                   password: activeInstance?.defaultServicePassword ?? "admin",
                 }}
+                unavailableComposeDefinitionIds={
+                  unavailableComposeDefinitionIds
+                }
               />
             </div>
           ))}

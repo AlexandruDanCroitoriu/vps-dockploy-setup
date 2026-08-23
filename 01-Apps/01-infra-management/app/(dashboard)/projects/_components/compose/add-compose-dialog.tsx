@@ -42,12 +42,14 @@ export function AddComposeDialog({
   definitions,
   rootDomain,
   defaultLoginCredentials,
+  unavailableDefinitionIds,
 }: {
   projectId: string;
   environmentId?: string;
   definitions: ComposeServiceOption[];
   rootDomain: string;
   defaultLoginCredentials: { username: string; password: string };
+  unavailableDefinitionIds: string[];
 }) {
   const [isListOpen, setIsListOpen] = useState(false);
   const listRef = useClickOutside<HTMLDivElement>(isListOpen, setIsListOpen);
@@ -144,33 +146,46 @@ export function AddComposeDialog({
               </p>
             ) : (
               <ul className="max-h-72 overflow-y-auto py-1">
-                {definitions.map((definition) => (
-                  <li key={definition.id}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedDefinition(definition);
-                        setIsOpen(true);
-                        setDeployAfterCreate(true);
-                        setIsListOpen(false);
-                      }}
-                      className="flex w-full items-start gap-2.5 px-3 py-2 text-left hover:bg-indigo-50 dark:hover:bg-indigo-500/10"
-                    >
-                      <QueueListIcon
-                        className="mt-0.5 size-4 shrink-0 text-indigo-500"
-                        aria-hidden="true"
-                      />
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium text-gray-800 dark:text-gray-200">
-                          {definition.name}
+                {definitions.map((definition) => {
+                  const unavailable = unavailableDefinitionIds.includes(
+                    definition.id,
+                  );
+                  return (
+                    <li key={definition.id}>
+                      <button
+                        type="button"
+                        disabled={unavailable}
+                        title={
+                          unavailable
+                            ? `Only one ${definition.name} service is allowed per Dokploy instance`
+                            : undefined
+                        }
+                        onClick={() => {
+                          setSelectedDefinition(definition);
+                          setIsOpen(true);
+                          setDeployAfterCreate(true);
+                          setIsListOpen(false);
+                        }}
+                        className="flex w-full items-start gap-2.5 px-3 py-2 text-left hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-45 dark:hover:bg-indigo-500/10"
+                      >
+                        <QueueListIcon
+                          className="mt-0.5 size-4 shrink-0 text-indigo-500"
+                          aria-hidden="true"
+                        />
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium text-gray-800 dark:text-gray-200">
+                            {definition.name}
+                          </span>
+                          <span className="block text-xs text-gray-500 dark:text-gray-400">
+                            {unavailable
+                              ? `Only one ${definition.name} service is allowed per Dokploy instance.`
+                              : definition.description}
+                          </span>
                         </span>
-                        <span className="block text-xs text-gray-500 dark:text-gray-400">
-                          {definition.description}
-                        </span>
-                      </span>
-                    </button>
-                  </li>
-                ))}
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>

@@ -4,12 +4,14 @@ import { revalidatePath } from "next/cache";
 
 import {
   getComposeServiceDefinition,
+  getUnavailableComposeServiceDefinitionIds,
   resolveComposeServiceEnvironment,
   resolveComposeServiceReferences,
 } from "@/compose-services/registry";
 import {
   createDokployRawCompose,
   getDokployProject,
+  getDokployProjects,
   isValidHostname,
   mergeDatabaseCredentialsIntoProjectEnv,
   mergeDokployProjectEnv,
@@ -77,6 +79,19 @@ export async function createComposeAction(
       message:
         "Portainer requires an administrator password of at least 12 characters.",
     };
+  }
+  if (definition.maxPerInstance) {
+    const projects = await getDokployProjects();
+    if (
+      getUnavailableComposeServiceDefinitionIds(projects).includes(
+        definition.id,
+      )
+    ) {
+      return {
+        status: "error",
+        message: `Only ${definition.maxPerInstance} ${definition.name} service is allowed per Dokploy instance.`,
+      };
+    }
   }
   const parameters = Object.fromEntries(
     (definition.parameterNames ?? []).map((name) => [

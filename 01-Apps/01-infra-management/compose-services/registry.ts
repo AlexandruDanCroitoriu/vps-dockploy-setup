@@ -2,12 +2,14 @@ import "server-only";
 
 import {
   parseDokployEnvironmentEntries,
+  type DokployProject,
   type DokployService,
 } from "@/lib/dokploy";
 
 import { dbGateService } from "./dbgate";
 import { garageService } from "./garage";
 import { portainerService } from "./portainer";
+import { zotService } from "./zot";
 
 export type ComposeServiceDefinitionContext = Readonly<{
   services: readonly DokployService[];
@@ -27,6 +29,7 @@ export type ComposeServiceDefinition = Readonly<{
     string | ((context: ComposeServiceDefinitionContext) => string);
   environmentTarget?: "service" | "project";
   requiresLoginCredentials?: boolean;
+  maxPerInstance?: number;
   parameterNames?: readonly string[];
   domain?: Readonly<{
     serviceName: string;
@@ -44,6 +47,7 @@ export const composeServiceDefinitions: readonly ComposeServiceDefinition[] = [
   dbGateService,
   garageService,
   portainerService,
+  zotService,
 ];
 
 export function getComposeServiceDefinition(id: string) {
@@ -55,6 +59,31 @@ export function getComposeServiceDefinitionByName(name: string) {
   return composeServiceDefinitions.find(
     (definition) => definition.name.toLowerCase() === normalizedName,
   );
+}
+
+export function getUnavailableComposeServiceDefinitionIds(
+  projects: readonly DokployProject[],
+) {
+  return composeServiceDefinitions.flatMap((definition) => {
+    if (!definition.maxPerInstance) return [];
+    const count = projects.reduce(
+      (projectCount, project) =>
+        projectCount +
+        project.environments.reduce(
+          (environmentCount, environment) =>
+            environmentCount +
+            environment.services.filter(
+              (service) =>
+                service.type === "compose" &&
+                service.name.trim().toLowerCase() ===
+                  definition.name.trim().toLowerCase(),
+            ).length,
+          0,
+        ),
+      0,
+    );
+    return count >= definition.maxPerInstance ? [definition.id] : [];
+  });
 }
 
 export function resolveComposeServiceEnvironment(

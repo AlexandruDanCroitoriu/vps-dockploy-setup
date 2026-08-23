@@ -40,6 +40,7 @@ export function ProjectCard({
   repositoryApplicationsError,
   rootDomain,
   defaultServiceCredentials,
+  unavailableComposeDefinitionIds = [],
 }: {
   project: DokployProject;
   editableName?: boolean;
@@ -50,6 +51,7 @@ export function ProjectCard({
   repositoryApplicationsError?: string;
   rootDomain: string;
   defaultServiceCredentials: { username: string; password: string };
+  unavailableComposeDefinitionIds?: string[];
 }) {
   const services = project.environments.flatMap((environment) =>
     environment.services.map((service) => ({
@@ -124,6 +126,7 @@ export function ProjectCard({
               definitions={composeServiceOptions}
               rootDomain={rootDomain}
               defaultLoginCredentials={defaultServiceCredentials}
+              unavailableDefinitionIds={unavailableComposeDefinitionIds}
             />
             <ServiceTemplateDropdown
               projectId={project.projectId}

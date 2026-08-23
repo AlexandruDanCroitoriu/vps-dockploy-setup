@@ -6,7 +6,9 @@ import {
   getActiveDokployConfiguration,
   getDokployGithubProviders,
   getDokployProject,
+  getDokployProjects,
 } from "@/lib/dokploy";
+import { getUnavailableComposeServiceDefinitionIds } from "@/compose-services/registry";
 import { getRepositoryApplicationsResult } from "@/lib/github/repository-applications";
 
 import { ProjectCard } from "../_components/project/project-card";
@@ -30,13 +32,19 @@ async function ProjectContent({
   params: Promise<{ projectId: string }>;
 }) {
   const { projectId } = await params;
-  const [project, githubProviders, repositoryApplications, activeInstance] =
-    await Promise.all([
-      getDokployProject(projectId),
-      getDokployGithubProviders().catch(() => []),
-      getRepositoryApplicationsResult(),
-      getActiveDokployConfiguration(),
-    ]);
+  const [
+    project,
+    projects,
+    githubProviders,
+    repositoryApplications,
+    activeInstance,
+  ] = await Promise.all([
+    getDokployProject(projectId),
+    getDokployProjects(),
+    getDokployGithubProviders().catch(() => []),
+    getRepositoryApplicationsResult(),
+    getActiveDokployConfiguration(),
+  ]);
 
   if (!project) notFound();
 
@@ -65,6 +73,9 @@ async function ProjectContent({
             username: activeInstance?.defaultServiceUsername ?? "admin",
             password: activeInstance?.defaultServicePassword ?? "admin",
           }}
+          unavailableComposeDefinitionIds={getUnavailableComposeServiceDefinitionIds(
+            projects,
+          )}
         />
       </div>
     </div>
