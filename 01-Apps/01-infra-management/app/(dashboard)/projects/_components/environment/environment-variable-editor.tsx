@@ -45,6 +45,7 @@ type EnvironmentEditorProps =
 export function EnvironmentVariableEditor(props: EnvironmentEditorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [value, setValue] = useState(props.initialValue);
+  const [dirty, setDirty] = useState(false);
   const action =
     props.target === "project"
       ? updateProjectEnvAction.bind(null, props.targetId)
@@ -54,9 +55,23 @@ export function EnvironmentVariableEditor(props: EnvironmentEditorProps) {
 
   useEffect(() => {
     if (state.status === "success") {
-      queueMicrotask(() => setIsOpen(false));
+      queueMicrotask(() => {
+        setDirty(false);
+        setIsOpen(false);
+      });
     }
   }, [state]);
+
+  useEffect(() => {
+    if (dirty) return;
+    queueMicrotask(() => setValue(props.initialValue));
+  }, [dirty, props.initialValue]);
+
+  function closeEditor() {
+    setValue(props.initialValue);
+    setDirty(false);
+    setIsOpen(false);
+  }
 
   const editor = (
     <div className="overflow-hidden rounded-md border border-gray-300 dark:border-white/10">
@@ -65,7 +80,10 @@ export function EnvironmentVariableEditor(props: EnvironmentEditorProps) {
         language="ini"
         path={`dokploy-${props.target}-${props.targetId}.env`}
         value={value}
-        onChange={(nextValue) => setValue(nextValue ?? "")}
+        onChange={(nextValue) => {
+          setValue(nextValue ?? "");
+          setDirty(true);
+        }}
         theme="vs-dark"
         options={{
           automaticLayout: true,
@@ -150,7 +168,7 @@ export function EnvironmentVariableEditor(props: EnvironmentEditorProps) {
       {isOpen && (
         <AppDialog
           open
-          onClose={() => setIsOpen(false)}
+          onClose={closeEditor}
           title={`${targetLabel} variables · ${props.targetName}`}
           description={`Edit the environment document for this ${props.target}.`}
           width="lg"
@@ -175,7 +193,7 @@ export function EnvironmentVariableEditor(props: EnvironmentEditorProps) {
               <div className="flex justify-end gap-3">
                 <button
                   type="button"
-                  onClick={() => setIsOpen(false)}
+                  onClick={closeEditor}
                   className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-white/15 dark:text-gray-200 dark:hover:bg-white/5"
                 >
                   Cancel

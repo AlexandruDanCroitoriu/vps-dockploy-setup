@@ -11,13 +11,31 @@ export const getDokployProjects = cache(async (): Promise<DokployProject[]> => {
   if (!Array.isArray(payload)) {
     throw new Error("Dokploy returned an unexpected projects response.");
   }
-  return payload.flatMap((candidate) => {
+  const summaries = payload.flatMap((candidate) => {
     const project = normalizeProject(candidate);
     return project ? [project] : [];
   });
+  return Promise.all(
+    summaries.map(async (summary) => {
+      try {
+        const payload = await dokployGet<unknown>(
+          `project.one?${new URLSearchParams({ projectId: summary.projectId })}`,
+        );
+        return (
+          normalizeProject(
+            isRecord(payload) && isRecord(payload.data)
+              ? payload.data
+              : payload,
+          ) ?? summary
+        );
+      } catch {
+        return summary;
+      }
+    }),
+  );
 });
 
-export const getDokployProject = cache(async (projectId: string) => {
+async function fetchDokployProject(projectId: string) {
   try {
     const payload = await dokployGet<unknown>(
       `project.one?${new URLSearchParams({ projectId })}`,
@@ -36,7 +54,13 @@ export const getDokployProject = cache(async (projectId: string) => {
   }
   const projects = await getDokployProjects();
   return projects.find((project) => project.projectId === projectId) ?? null;
-});
+}
+
+export const getDokployProject = cache(fetchDokployProject);
+
+export function getFreshDokployProject(projectId: string) {
+  return fetchDokployProject(projectId);
+}
 
 export async function updateDokployProjectEnv(projectId: string, env: string) {
   await dokployPost("project.update", { projectId, env });
@@ -66,6 +90,24 @@ export function mergeDokployProjectEnv(
     output.push(`${key}=${JSON.stringify(value)}`);
   }
   return output.join("\n");
+}
+
+export function removeDokployProjectEnvEntries(
+  current: string,
+  keys: ReadonlySet<string>,
+) {
+  return current
+    .replaceAll("\r\n", "\n")
+    .split("\n")
+    .filter((line) => {
+      const match = line.match(
+        /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/,
+      );
+      return !match || !keys.has(match[1]);
+    })
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/^\n+|\n+$/g, "");
 }
 
 export function parseDokployEnvironmentEntries(document: string) {

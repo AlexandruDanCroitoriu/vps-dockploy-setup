@@ -45,6 +45,8 @@ describe("normalizeServiceStatus", () => {
 describe("container status", () => {
   it.each([
     [{ State: "running" }, true],
+    [{ Status: "running" }, true],
+    [{ status: "running" }, true],
     [{ Status: "Up 2 minutes" }, true],
     [{ status: "up" }, true],
     [{ State: "exited", Status: "Exited (1)" }, false],

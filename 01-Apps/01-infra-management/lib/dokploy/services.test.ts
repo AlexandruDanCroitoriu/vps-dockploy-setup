@@ -10,6 +10,7 @@ import {
   reloadDokployService,
   removeDokployService,
   resolveDokployLiveStatus,
+  shouldPollDokployServiceStatus,
   startDokployService,
   stopDokployService,
 } from "./services";
@@ -41,6 +42,52 @@ describe("live service status", () => {
     ).resolves.toMatchObject({ status: "running" });
   });
 
+  it("reports running as soon as a deploying service has a live container", async () => {
+    const loadContainers = vi.fn().mockResolvedValue({
+      containers: [{ State: "running" }],
+    });
+    await expect(
+      resolveDokployLiveStatus(
+        { ...service, status: "deploying" },
+        loadContainers,
+      ),
+    ).resolves.toMatchObject({ status: "running" });
+    expect(loadContainers).toHaveBeenCalledWith(
+      "docker.getContainersByAppNameMatch?appName=compose-app&appType=docker-compose",
+    );
+  });
+
+  it("keeps deploying while no live container is available", async () => {
+    await expect(
+      resolveDokployLiveStatus(
+        { ...service, status: "deploying" },
+        async () => ({ containers: [{ State: "exited" }] }),
+      ),
+    ).resolves.toMatchObject({ status: "deploying" });
+  });
+
+  it("falls back to a compose container name when its project label is unavailable", async () => {
+    const loadContainers = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ state: "running" }]);
+
+    await expect(
+      resolveDokployLiveStatus(
+        { ...service, status: "deploying" },
+        loadContainers,
+      ),
+    ).resolves.toMatchObject({ status: "running" });
+    expect(loadContainers).toHaveBeenNthCalledWith(
+      1,
+      "docker.getContainersByAppNameMatch?appName=compose-app&appType=docker-compose",
+    );
+    expect(loadContainers).toHaveBeenNthCalledWith(
+      2,
+      "docker.getContainersByAppNameMatch?appName=compose-app",
+    );
+  });
+
   it("maps missing and malformed containers to down", async () => {
     await expect(
       resolveDokployLiveStatus({ ...service }, async () => ({
@@ -55,6 +102,46 @@ describe("live service status", () => {
         throw new Error("Docker unavailable");
       }),
     ).resolves.toMatchObject({ status: "running" });
+  });
+
+  it("does not demote a Dokploy-confirmed running service", async () => {
+    const loadContainers = vi.fn().mockResolvedValue({ containers: [] });
+
+    await expect(
+      resolveDokployLiveStatus(
+        { ...service, status: "running" },
+        loadContainers,
+      ),
+    ).resolves.toMatchObject({ status: "running" });
+    expect(loadContainers).not.toHaveBeenCalled();
+  });
+});
+
+describe("service status polling", () => {
+  const now = Date.parse("2026-08-23T20:00:00.000Z");
+
+  it("polls deploying and recently created down services", () => {
+    expect(
+      shouldPollDokployServiceStatus({ ...service, status: "deploying" }, now),
+    ).toBe(true);
+    expect(
+      shouldPollDokployServiceStatus(
+        { ...service, status: "down", createdAt: "2026-08-23T19:59:00.000Z" },
+        now,
+      ),
+    ).toBe(true);
+  });
+
+  it("does not poll established stopped services", () => {
+    expect(
+      shouldPollDokployServiceStatus(
+        { ...service, status: "down", createdAt: "2026-08-23T19:00:00.000Z" },
+        now,
+      ),
+    ).toBe(false);
+    expect(
+      shouldPollDokployServiceStatus({ ...service, status: "down" }, now),
+    ).toBe(false);
   });
 });
 

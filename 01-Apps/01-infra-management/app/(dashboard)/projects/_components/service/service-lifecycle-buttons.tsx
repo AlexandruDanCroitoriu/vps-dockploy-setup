@@ -21,7 +21,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { AppDialog } from "@/components/ui/dialog";
 import type { DokployServiceStatus, DokployServiceType } from "@/lib/dokploy";
-import { notifyProjectsChanged } from "@/lib/project-events";
+import {
+  notifyProjectsChanged,
+  notifyProjectServiceDeleted,
+} from "@/lib/project-events";
 
 import {
   deployServiceAction,
@@ -221,6 +224,7 @@ function CompactServiceMenu({
         throw new Error(payload?.error || "Unable to delete the service.");
       }
       setDeleteOpen(false);
+      notifyProjectServiceDeleted(projectId, serviceId);
       if (deleteRedirectHref) router.push(deleteRedirectHref);
       else router.refresh();
       notifyProjectsChanged();

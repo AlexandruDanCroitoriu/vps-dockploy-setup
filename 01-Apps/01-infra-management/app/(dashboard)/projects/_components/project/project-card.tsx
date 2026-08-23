@@ -7,6 +7,7 @@ import {
   getDokployServiceStatus,
   getServiceTypeLabel,
   isDatabaseService,
+  shouldPollDokployServiceStatus,
   type DokployProject,
   type DokployGithubProvider,
   type DokployService,
@@ -22,6 +23,9 @@ import { ProjectNameEditor } from "./project-name-editor";
 import { ProjectSettingsMenu } from "./project-settings-menu";
 import { getServiceDisplayName, ServiceCard } from "../service/service-card";
 import { OptimisticProjectServices } from "../service/optimistic-project-services";
+import { ServiceStatusRefresh } from "../service/service-status-refresh";
+import { DeletedServiceGuard } from "../service/deleted-service-guard";
+import { ServiceTemplateDropdown } from "../service-template/service-template-dropdown";
 
 export function ProjectCard({
   project,
@@ -114,6 +118,14 @@ export function ProjectCard({
               rootDomain={rootDomain}
               defaultLoginCredentials={defaultServiceCredentials}
             />
+            <ServiceTemplateDropdown
+              projectId={project.projectId}
+              environmentExists={project.environments.length > 0}
+              services={services.map(({ service }) => ({
+                type: service.type,
+                name: service.name,
+              }))}
+            />
             <EnvironmentVariableEditor
               target="project"
               targetId={project.projectId}
@@ -137,6 +149,7 @@ export function ProjectCard({
           existingServices={services.map(({ service }) => ({
             id: service.id,
             name: service.name,
+            type: service.type,
           }))}
         >
           {serviceCount > 0 && (
@@ -211,31 +224,44 @@ async function ProjectServices({
       ),
     ),
   ]);
+  const resolvedServices = services.map((service, index) =>
+    statusResults[index].status === "fulfilled"
+      ? statusResults[index].value
+      : service,
+  );
 
   return (
-    <ul className="mt-3 grid gap-2">
-      {services.map((service, index) => (
-        <ServiceCard
-          key={`${service.type}-${service.id}`}
-          service={
-            statusResults[index].status === "fulfilled"
-              ? statusResults[index].value
-              : service
-          }
-          domains={
-            domainResults[index].status === "fulfilled"
-              ? domainResults[index].value
-              : []
-          }
-          projectId={projectId}
-          serviceActionsMenu={serviceActionsMenu}
-          href={
-            linkServices
-              ? `/projects/${encodeURIComponent(projectId)}/services/${service.type}/${encodeURIComponent(service.id)}`
-              : undefined
-          }
-        />
-      ))}
-    </ul>
+    <>
+      <ServiceStatusRefresh
+        active={resolvedServices.some((service) =>
+          shouldPollDokployServiceStatus(service),
+        )}
+      />
+      <ul className="mt-3 grid gap-2">
+        {resolvedServices.map((service, index) => (
+          <DeletedServiceGuard
+            key={`${service.type}-${service.id}`}
+            projectId={projectId}
+            serviceId={service.id}
+          >
+            <ServiceCard
+              service={service}
+              domains={
+                domainResults[index].status === "fulfilled"
+                  ? domainResults[index].value
+                  : []
+              }
+              projectId={projectId}
+              serviceActionsMenu={serviceActionsMenu}
+              href={
+                linkServices
+                  ? `/projects/${encodeURIComponent(projectId)}/services/${service.type}/${encodeURIComponent(service.id)}`
+                  : undefined
+              }
+            />
+          </DeletedServiceGuard>
+        ))}
+      </ul>
+    </>
   );
 }

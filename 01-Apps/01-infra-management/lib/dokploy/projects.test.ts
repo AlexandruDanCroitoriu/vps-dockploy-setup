@@ -1,12 +1,64 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 vi.mock("./client", () => ({ dokployGet: vi.fn(), dokployPost: vi.fn() }));
 
 import {
+  getDokployProjects,
   mergeDokployProjectEnv,
   parseDokployEnvironmentEntries,
+  removeDokployProjectEnvEntries,
 } from "./projects";
+import { dokployGet } from "./client";
+
+beforeEach(() => vi.mocked(dokployGet).mockReset());
+
+describe("project loading", () => {
+  it("hydrates sparse project-list databases with project details", async () => {
+    vi.mocked(dokployGet)
+      .mockResolvedValueOnce([
+        {
+          projectId: "project-1",
+          name: "Project",
+          environments: [
+            { environmentId: "env-1", name: "Production", postgres: [{ postgresId: "pg-1" }] },
+          ],
+        },
+      ])
+      .mockResolvedValueOnce({
+        projectId: "project-1",
+        name: "Project",
+        environments: [
+          {
+            environmentId: "env-1",
+            name: "Production",
+            postgres: [
+              {
+                postgresId: "pg-1",
+                name: "postgres",
+                appName: "postgres-generated-name",
+                applicationStatus: "done",
+                createdAt: "2026-08-23T20:00:00.000Z",
+              },
+            ],
+          },
+        ],
+      });
+
+    const projects = await getDokployProjects();
+
+    expect(projects[0].environments[0].services[0]).toMatchObject({
+      id: "pg-1",
+      appName: "postgres-generated-name",
+      status: "running",
+      createdAt: "2026-08-23T20:00:00.000Z",
+    });
+    expect(dokployGet).toHaveBeenNthCalledWith(
+      2,
+      "project.one?projectId=project-1",
+    );
+  });
+});
 
 describe("project environment variables", () => {
   it("updates database keys while preserving unrelated lines", () => {
@@ -40,5 +92,14 @@ describe("project environment variables", () => {
       DBGATE_LOGIN: "admin",
       DBGATE_PASSWORD: "secret#value",
     });
+  });
+
+  it("removes managed variables while preserving unrelated entries", () => {
+    expect(
+      removeDokployProjectEnvEntries(
+        '# App\nAPP_ENV="production"\nPOSTGRES_HOST="host"\nPOSTGRES_PASSWORD="secret"',
+        new Set(["POSTGRES_HOST", "POSTGRES_PASSWORD"]),
+      ),
+    ).toBe('# App\nAPP_ENV="production"');
   });
 });

@@ -73,6 +73,7 @@ export function AddComposeDialog({
         matchName: selectedDefinition.name,
         displayName: selectedDefinition.name,
         typeLabel: "Compose",
+        serviceType: "compose",
       },
     });
     setIsOpen(false);

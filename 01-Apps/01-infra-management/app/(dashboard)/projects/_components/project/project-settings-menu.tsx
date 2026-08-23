@@ -13,6 +13,10 @@ import { useActionState, useEffect, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import { AppDialog } from "@/components/ui/dialog";
+import {
+  notifyProjectsChanged,
+  notifyProjectServiceDeleted,
+} from "@/lib/project-events";
 
 import {
   deleteProjectAction,
@@ -87,7 +91,9 @@ export function ProjectSettingsMenu({
         throw new Error(payload?.error || "Unable to delete the service.");
       }
       setDeletedServiceIds((current) => new Set(current).add(serviceId));
+      notifyProjectServiceDeleted(projectId, serviceId);
       router.refresh();
+      notifyProjectsChanged();
     } catch (error) {
       setServiceDeleteErrors((current) => ({
         ...current,

@@ -1,7 +1,10 @@
 import "server-only";
 import { dokployPost } from "./client";
 import { databaseCredentials, isRecord, stringValue } from "./normalizers";
-import { mergeDokployProjectEnv } from "./projects";
+import {
+  mergeDokployProjectEnv,
+  removeDokployProjectEnvEntries,
+} from "./projects";
 import type { DokployDatabaseType, DokployService } from "./types";
 
 export async function createDokployDatabase(input: {
@@ -90,4 +93,24 @@ export function mergeDatabaseCredentialsIntoProjectEnv(
       ),
     );
   }, current);
+}
+
+export function removeDatabaseCredentialsFromProjectEnv(
+  current: string,
+  removedService: DokployService,
+  remainingServices: readonly DokployService[],
+) {
+  const removedKeys = new Set(
+    Object.keys(
+      databaseProjectEnvironmentEntries(
+        removedService.type as DokployDatabaseType,
+        removedService.name,
+        removedService.credentials,
+      ),
+    ),
+  );
+  return mergeDatabaseCredentialsIntoProjectEnv(
+    removeDokployProjectEnvEntries(current, removedKeys),
+    remainingServices,
+  );
 }

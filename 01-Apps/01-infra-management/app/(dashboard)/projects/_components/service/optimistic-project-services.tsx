@@ -1,14 +1,32 @@
 "use client";
 
-import { CubeIcon } from "@heroicons/react/24/outline";
-import { useRouter } from "next/navigation";
-import { type ReactNode, useEffect, useState } from "react";
+import {
+  ArrowTopRightOnSquareIcon,
+  CubeIcon,
+} from "@heroicons/react/24/outline";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 import {
   PROJECT_SERVICE_CREATION_EVENT,
   type PendingProjectService,
   type ProjectServiceCreationDetail,
 } from "@/lib/project-events";
+import { usePeriodicRouterRefresh } from "../use-periodic-router-refresh";
+
+type ExistingService = { id: string; name: string; type: string };
+
+function matchesExistingService(
+  pending: PendingProjectService,
+  existing: ExistingService,
+) {
+  return (
+    (pending.serviceId && existing.id === pending.serviceId) ||
+    existing.name.toLowerCase() === pending.matchName.toLowerCase() ||
+    (["postgres", "mysql", "mariadb", "mongo", "redis"].includes(
+      pending.serviceType,
+    ) && existing.type === pending.serviceType)
+  );
+}
 
 export function OptimisticProjectServices({
   projectId,
@@ -16,30 +34,35 @@ export function OptimisticProjectServices({
   children,
 }: {
   projectId: string;
-  existingServices: Array<{ id: string; name: string }>;
+  existingServices: ExistingService[];
   children: ReactNode;
 }) {
   const [pendingServices, setPendingServices] = useState<
     PendingProjectService[]
   >([]);
-  const router = useRouter();
+  const [liveStatuses, setLiveStatuses] = useState<
+    Record<string, "running" | "deploying" | "down">
+  >({});
+  const [liveDomains, setLiveDomains] = useState<
+    Record<string, Array<{ domainId: string; host: string; https: boolean }>>
+  >({});
 
-  const visiblePendingServices = pendingServices.filter(
-    (pending) =>
-      !existingServices.some(
-        (existing) =>
-          (pending.serviceId && existing.id === pending.serviceId) ||
-          existing.name === pending.matchName,
+  const visiblePendingServices = useMemo(
+    () =>
+      pendingServices.filter(
+        (pending) =>
+          !existingServices.some((existing) =>
+            matchesExistingService(pending, existing),
+          ),
       ),
+    [existingServices, pendingServices],
   );
 
   useEffect(() => {
     const settledRequestIds = pendingServices
       .filter((pending) =>
-        existingServices.some(
-          (existing) =>
-            (pending.serviceId && existing.id === pending.serviceId) ||
-            existing.name === pending.matchName,
+        existingServices.some((existing) =>
+          matchesExistingService(pending, existing),
         ),
       )
       .map((pending) => pending.requestId);
@@ -90,11 +113,58 @@ export function OptimisticProjectServices({
       );
   }, [projectId]);
 
+  usePeriodicRouterRefresh(visiblePendingServices.length > 0, 2_000);
+
   useEffect(() => {
-    if (visiblePendingServices.length === 0) return;
-    const refresh = window.setInterval(() => router.refresh(), 2_000);
-    return () => window.clearInterval(refresh);
-  }, [visiblePendingServices.length, router]);
+    const createdServices = visiblePendingServices.filter(
+      (service) =>
+        service.serviceId &&
+        liveStatuses[service.requestId] !== "running" &&
+        liveStatuses[service.requestId] !== "down",
+    );
+    if (createdServices.length === 0) return;
+
+    let cancelled = false;
+    const loadStatuses = async () => {
+      await Promise.all(
+        createdServices.map(async (service) => {
+          const response = await fetch(
+            `/api/dokploy/projects/${encodeURIComponent(projectId)}/services/${encodeURIComponent(service.serviceType)}/${encodeURIComponent(service.serviceId!)}`,
+          );
+          if (!response.ok) return;
+          const result = (await response.json()) as {
+            status?: "running" | "deploying" | "down";
+            domains?: Array<{
+              domainId: string;
+              host: string;
+              https: boolean;
+            }>;
+          };
+          if (cancelled || !result.status) return;
+          setLiveStatuses((current) =>
+            current[service.requestId] === result.status
+              ? current
+              : { ...current, [service.requestId]: result.status! },
+          );
+          if (result.domains) {
+            setLiveDomains((current) => {
+              const previous = current[service.requestId] ?? [];
+              return JSON.stringify(previous) === JSON.stringify(result.domains)
+                ? current
+                : { ...current, [service.requestId]: result.domains! };
+            });
+          }
+        }),
+      );
+    };
+
+    void loadStatuses();
+    const interval = window.setInterval(loadStatuses, 2_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [liveStatuses, projectId, visiblePendingServices]);
 
   if (
     visiblePendingServices.length === 0 &&
@@ -119,14 +189,48 @@ export function OptimisticProjectServices({
               <CubeIcon className="size-4 shrink-0 text-indigo-500" />
               <div className="min-w-0 flex-1">
                 <div className="flex min-w-0 items-center gap-2">
-                  <span className="size-2.5 shrink-0 animate-pulse rounded-full bg-amber-400" />
+                  <span
+                    className={`size-2.5 shrink-0 rounded-full ${
+                      liveStatuses[service.requestId] === "running"
+                        ? "bg-emerald-500"
+                        : liveStatuses[service.requestId] === "down"
+                          ? "bg-red-500"
+                          : "animate-pulse bg-amber-400"
+                    }`}
+                  />
                   <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
                     {service.displayName}
                   </p>
                 </div>
                 <p className="truncate text-xs text-gray-500 dark:text-gray-400">
-                  {service.typeLabel} · Creating…
+                  {service.typeLabel} · {service.serviceId
+                    ? liveStatuses[service.requestId] === "running"
+                      ? "Running"
+                      : liveStatuses[service.requestId] === "down"
+                        ? "Down"
+                        : "Deploying…"
+                    : "Creating…"}
                 </p>
+                {(liveDomains[service.requestId] ?? []).length > 0 && (
+                  <div className="mt-1 flex min-w-0 flex-wrap gap-x-3 gap-y-1">
+                    {liveDomains[service.requestId].map((domain) => (
+                      <a
+                        key={domain.domainId}
+                        href={`${domain.https ? "https" : "http"}://${domain.host}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={`Open ${domain.host}`}
+                        className="inline-flex min-w-0 items-center gap-1 text-[11px] text-indigo-600 hover:text-indigo-500 hover:underline dark:text-indigo-300 dark:hover:text-indigo-200"
+                      >
+                        <span className="max-w-52 truncate">{domain.host}</span>
+                        <ArrowTopRightOnSquareIcon
+                          className="size-3 shrink-0"
+                          aria-hidden="true"
+                        />
+                      </a>
+                    ))}
+                  </div>
+                )}
               </div>
               <span className="size-7 shrink-0 animate-pulse rounded-md bg-gray-100 dark:bg-white/5" />
             </li>

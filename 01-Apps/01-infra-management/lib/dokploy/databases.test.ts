@@ -8,6 +8,7 @@ import {
   createDokployDatabase,
   databaseProjectEnvironmentEntries,
   mergeDatabaseCredentialsIntoProjectEnv,
+  removeDatabaseCredentialsFromProjectEnv,
 } from "./databases";
 
 beforeEach(() => {
@@ -79,5 +80,29 @@ describe("database project credentials", () => {
         },
       ]),
     ).toContain('REDIS_HOST="redis-internal"');
+  });
+
+  it("removes deleted database variables and preserves unrelated variables", () => {
+    const removed = {
+      id: "postgres-1",
+      name: "primary database",
+      appName: "postgres-internal",
+      env: "",
+      serverId: null,
+      sourcePath: null,
+      type: "postgres" as const,
+      status: "running" as const,
+      credentials: [
+        { label: "Internal Host", value: "postgres-internal" },
+        { label: "Password", value: "secret" },
+      ],
+    };
+    expect(
+      removeDatabaseCredentialsFromProjectEnv(
+        'APP_ENV="production"\nPOSTGRES_HOST="postgres-internal"\nPOSTGRES_PASSWORD="secret"\nPRIMARY_DATABASE_HOST="postgres-internal"',
+        removed,
+        [],
+      ),
+    ).toBe('APP_ENV="production"');
   });
 });

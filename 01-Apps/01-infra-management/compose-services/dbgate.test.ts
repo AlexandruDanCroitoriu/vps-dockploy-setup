@@ -9,6 +9,7 @@ import {
   buildDbGateServiceReferences,
   dbGateService,
 } from "./dbgate";
+import { resolveComposeProjectEnvironmentKeys } from "./registry";
 
 function database(
   type: "postgres" | "redis",
@@ -40,12 +41,13 @@ describe("DBGate Compose definition", () => {
       serviceName: "dbgate",
       defaultSubdomain: "dbgate",
       port: 3000,
+      generateByDefault: true,
     });
     expect(dbGateService.environmentTarget).toBe("project");
     expect(dbGateService.requiresLoginCredentials).toBe(true);
     expect(dbGateService.domain).toMatchObject({
       httpsByDefault: true,
-      required: true,
+      required: false,
     });
   });
 
@@ -84,6 +86,18 @@ describe("DBGate Compose definition", () => {
     expect(environment).toContain('DBGATE_CONNECTIONS=""');
     expect(environment).not.toContain("POSTGRES_HOST");
     expect(environment).not.toContain("REDIS_HOST");
+  });
+
+  it("declares the project variables that must be removed with DBGate", () => {
+    expect(
+      resolveComposeProjectEnvironmentKeys(dbGateService, {
+        services: [],
+        projectEnvironment:
+          'APP_ENV="production"\nDBGATE_LOGIN="admin"\nDBGATE_PASSWORD="secret"',
+      }),
+    ).toEqual(
+      new Set(["DBGATE_LOGIN", "DBGATE_PASSWORD", "DBGATE_CONNECTIONS"]),
+    );
   });
 
   it("references project credentials from the Compose service environment", () => {

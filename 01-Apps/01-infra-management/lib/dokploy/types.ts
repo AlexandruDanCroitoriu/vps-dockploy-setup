@@ -26,6 +26,7 @@ export type DokployService = {
   type: DokployServiceType;
   status: DokployServiceStatus;
   credentials: Array<{ label: string; value: string; secret?: boolean }>;
+  createdAt?: string | null;
 };
 
 export type DokployEnvironment = {

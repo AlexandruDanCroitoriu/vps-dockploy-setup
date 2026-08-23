@@ -1,6 +1,7 @@
 export const PROJECTS_CHANGED_EVENT = "dokploy-projects-changed";
 export const PROJECT_SERVICE_CREATION_EVENT =
   "dokploy-project-service-creation";
+export const PROJECT_SERVICE_DELETED_EVENT = "dokploy-project-service-deleted";
 
 export type PendingProjectService = {
   requestId: string;
@@ -8,6 +9,7 @@ export type PendingProjectService = {
   matchName: string;
   displayName: string;
   typeLabel: string;
+  serviceType: string;
   serviceId?: string;
 };
 
@@ -23,6 +25,14 @@ export type ProjectServiceCreationDetail =
 
 export function notifyProjectsChanged() {
   window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT));
+}
+
+export function notifyProjectServiceDeleted(projectId: string, serviceId: string) {
+  window.dispatchEvent(
+    new CustomEvent(PROJECT_SERVICE_DELETED_EVENT, {
+      detail: { projectId, serviceId },
+    }),
+  );
 }
 
 export function notifyProjectServiceCreation(

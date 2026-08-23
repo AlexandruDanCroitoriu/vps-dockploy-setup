@@ -124,7 +124,8 @@ networks:
     serviceName: "dbgate",
     defaultSubdomain: "dbgate",
     port: 3000,
+    generateByDefault: true,
     httpsByDefault: true,
-    required: true,
+    required: false,
   },
 } satisfies ComposeServiceDefinition;

@@ -98,6 +98,7 @@ export function AddApplicationDialog({
         matchName: applicationName,
         displayName: applicationName,
         typeLabel: "Application",
+        serviceType: "applications",
       },
     });
     setIsOpen(false);

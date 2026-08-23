@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { notifyProjectServiceCreation } from "@/lib/project-events";
@@ -14,8 +14,14 @@ vi.mock("next/navigation", () => ({
 }));
 
 describe("OptimisticProjectServices", () => {
-  beforeEach(() => refresh.mockReset());
-  afterEach(cleanup);
+  beforeEach(() => {
+    refresh.mockReset();
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => undefined)));
+  });
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
 
   it("shows a pending card immediately and permanently settles it when the service arrives", async () => {
     const { rerender } = render(
@@ -33,6 +39,7 @@ describe("OptimisticProjectServices", () => {
           matchName: "postgres",
           displayName: "PostgreSQL",
           typeLabel: "PostgreSQL",
+          serviceType: "postgres",
         },
       });
     });
@@ -43,7 +50,9 @@ describe("OptimisticProjectServices", () => {
     rerender(
       <OptimisticProjectServices
         projectId="project-1"
-        existingServices={[{ id: "database-1", name: "postgres" }]}
+        existingServices={[
+          { id: "database-1", name: "Normalized PostgreSQL", type: "postgres" },
+        ]}
       >
         <p>Real service</p>
       </OptimisticProjectServices>,
@@ -80,6 +89,7 @@ describe("OptimisticProjectServices", () => {
           matchName: "redis",
           displayName: "Redis",
           typeLabel: "Redis",
+          serviceType: "redis",
         },
       });
       notifyProjectServiceCreation({
@@ -91,5 +101,57 @@ describe("OptimisticProjectServices", () => {
 
     expect(screen.queryByText("redis")).not.toBeInTheDocument();
     expect(screen.getByText("No services in this project.")).toBeInTheDocument();
+  });
+
+  it("shows the live status while the project snapshot catches up", async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        status: "running",
+        domains: [
+          {
+            domainId: "domain-1",
+            host: "dbgate.example.com",
+            https: true,
+          },
+        ],
+      }),
+    } as Response);
+    render(
+      <OptimisticProjectServices projectId="project-1" existingServices={[]}>
+        {null}
+      </OptimisticProjectServices>,
+    );
+
+    act(() => {
+      notifyProjectServiceCreation({
+        phase: "started",
+        service: {
+          requestId: "request-dbgate",
+          projectId: "project-1",
+          matchName: "DBGate",
+          displayName: "DBGate",
+          typeLabel: "Compose",
+          serviceType: "compose",
+        },
+      });
+      notifyProjectServiceCreation({
+        phase: "completed",
+        requestId: "request-dbgate",
+        projectId: "project-1",
+        serviceId: "compose-1",
+      });
+    });
+
+    await waitFor(() =>
+      expect(screen.getByText("Compose · Running")).toBeInTheDocument(),
+    );
+    expect(screen.getByRole("link", { name: /dbgate\.example\.com/ })).toHaveAttribute(
+      "href",
+      "https://dbgate.example.com",
+    );
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/dokploy/projects/project-1/services/compose/compose-1",
+    );
   });
 });

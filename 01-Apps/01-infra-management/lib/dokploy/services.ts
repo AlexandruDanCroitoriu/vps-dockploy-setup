@@ -40,6 +40,7 @@ async function withServiceDetails(service: DokployService) {
         service.type,
         service.appName ?? "",
       ),
+      createdAt: stringValue(details.createdAt) || service.createdAt,
     };
   } catch {
     return service;
@@ -50,19 +51,27 @@ export async function resolveDokployLiveStatus(
   service: DokployService,
   loadContainers: (endpoint: string) => Promise<unknown> = dokployGet,
 ) {
-  if (service.status === "deploying" || !service.appName) return service;
+  if (service.status === "running") return service;
+  if (!service.appName) return service;
   const query = new URLSearchParams({ appName: service.appName });
+  if (service.type === "compose") query.set("appType", "docker-compose");
   if (service.serverId) query.set("serverId", service.serverId);
   try {
-    const containers = containersFromResponse(
+    let containers = containersFromResponse(
       await loadContainers(`docker.getContainersByAppNameMatch?${query}`),
     );
-    return {
-      ...service,
-      status: containers.some(isContainerRunning)
-        ? ("running" as const)
-        : ("down" as const),
-    };
+    if (service.type === "compose" && !containers.some(isContainerRunning)) {
+      query.delete("appType");
+      containers = containersFromResponse(
+        await loadContainers(`docker.getContainersByAppNameMatch?${query}`),
+      );
+    }
+    if (containers.some(isContainerRunning)) {
+      return { ...service, status: "running" as const };
+    }
+    return service.status === "deploying"
+      ? service
+      : { ...service, status: "down" as const };
   } catch {
     return service;
   }
@@ -75,6 +84,22 @@ export const getDokployServiceStatus = cache(async (service: DokployService) =>
 export const getDokployLiveServiceStatus = cache(
   async (service: DokployService) => resolveDokployLiveStatus(service),
 );
+
+const NEW_SERVICE_STATUS_WINDOW_MS = 5 * 60 * 1000;
+
+export function shouldPollDokployServiceStatus(
+  service: DokployService,
+  now = Date.now(),
+) {
+  if (service.status === "deploying") return true;
+  if (service.status !== "down" || !service.createdAt) return false;
+  const createdAt = Date.parse(service.createdAt);
+  return (
+    Number.isFinite(createdAt) &&
+    now >= createdAt &&
+    now - createdAt <= NEW_SERVICE_STATUS_WINDOW_MS
+  );
+}
 
 export async function hasDokployServiceContainer(service: DokployService) {
   if (!service.appName) return false;

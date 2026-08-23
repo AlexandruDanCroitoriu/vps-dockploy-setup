@@ -1,6 +1,9 @@
 import "server-only";
 
-import type { DokployService } from "@/lib/dokploy";
+import {
+  parseDokployEnvironmentEntries,
+  type DokployService,
+} from "@/lib/dokploy";
 
 import { dbGateService } from "./dbgate";
 
@@ -64,6 +67,20 @@ export function resolveComposeServiceReferences(
   const references = definition.serviceEnvironmentVariables;
   if (!references) return "";
   return typeof references === "function" ? references(context) : references;
+}
+
+export function resolveComposeProjectEnvironmentKeys(
+  definition: ComposeServiceDefinition,
+  context: ComposeServiceDefinitionContext,
+) {
+  if (definition.environmentTarget !== "project") return new Set<string>();
+  return new Set(
+    Object.keys(
+      parseDokployEnvironmentEntries(
+        resolveComposeServiceEnvironment(definition, context),
+      ),
+    ),
+  );
 }
 
 export const composeServiceOptions = composeServiceDefinitions.map(

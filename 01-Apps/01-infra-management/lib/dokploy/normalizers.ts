@@ -38,7 +38,12 @@ export function isContainerRunning(container: JsonRecord) {
   const status = stringValue(
     container.Status ?? container.status,
   ).toLowerCase();
-  return state === "running" || status.startsWith("up ") || status === "up";
+  return (
+    state === "running" ||
+    status === "running" ||
+    status.startsWith("up ") ||
+    status === "up"
+  );
 }
 
 export function normalizeServiceStatus(value: unknown): DokployServiceStatus {
@@ -147,6 +152,7 @@ export function normalizeServices(environment: JsonRecord) {
           type,
           status: serviceStatus(candidate, type),
           credentials: databaseCredentials(candidate, type),
+          createdAt: stringValue(candidate.createdAt) || null,
         },
       ];
     }),

@@ -102,6 +102,7 @@ export function AddDatabaseDialog({
 
   async function submitDatabase(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!type) return;
     const requestId = crypto.randomUUID();
     latestRequestIdRef.current = requestId;
     const formData = new FormData(event.currentTarget);
@@ -113,6 +114,7 @@ export function AddDatabaseDialog({
         matchName: name,
         displayName: selectedOption?.label ?? name,
         typeLabel: selectedOption?.label ?? "Database",
+        serviceType: type,
       },
     });
     setIsOpen(false);
