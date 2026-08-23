@@ -92,6 +92,7 @@ describe("DBGate Compose definition", () => {
     expect(
       resolveComposeProjectEnvironmentKeys(dbGateService, {
         services: [],
+        parameters: {},
         projectEnvironment:
           'APP_ENV="production"\nDBGATE_LOGIN="admin"\nDBGATE_PASSWORD="secret"',
       }),

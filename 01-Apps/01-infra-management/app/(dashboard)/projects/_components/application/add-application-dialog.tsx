@@ -1,12 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import {
-  type FormEvent,
-  useRef,
-  useState,
-  useTransition,
-} from "react";
+import { type FormEvent, useRef, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import { AppDialog } from "@/components/ui/dialog";
@@ -20,16 +15,17 @@ import type {
   DokployApplicationBuildType,
   DokployGithubProvider,
 } from "@/lib/dokploy";
-import type { RepositoryApplication } from "@/lib/github/repository-applications";
+import {
+  getRepositoryApplicationDefaultHost,
+  type RepositoryApplication,
+} from "@/lib/github/repository-applications";
 import {
   notifyProjectsChanged,
   notifyProjectServiceCreation,
   submitProjectServiceCreation,
 } from "@/lib/project-events";
 
-import {
-  generateApplicationDomainAction,
-} from "../../_actions/applications";
+import { generateApplicationDomainAction } from "../../_actions/applications";
 import type { ActionState } from "../../_actions/shared";
 import { RepositoryApplicationDropdown } from "./repository-application-dropdown";
 
@@ -61,12 +57,16 @@ export function AddApplicationDialog({
   environments,
   githubProviders,
   repositoryApplications,
+  repositoryApplicationsError,
+  rootDomain,
   deployedApplications,
 }: {
   projectId: string;
   environments: Array<{ environmentId: string; name: string }>;
   githubProviders: DokployGithubProvider[];
   repositoryApplications: RepositoryApplication[];
+  repositoryApplicationsError: string;
+  rootDomain: string;
   deployedApplications: Array<{ name: string; sourcePath: string | null }>;
 }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -151,7 +151,7 @@ export function AddApplicationDialog({
     setWatchPaths(watchPathFor(path));
     setWatchPathsEdited(false);
     setApplicationName(application.name);
-    setDomainHost("");
+    setDomainHost(getRepositoryApplicationDefaultHost(application, rootDomain));
     setDomainGenerationError("");
     setIsOpen(true);
   }
@@ -176,6 +176,7 @@ export function AddApplicationDialog({
       <RepositoryApplicationDropdown
         disabled={environments.length === 0}
         applications={repositoryApplications}
+        applicationsError={repositoryApplicationsError}
         deployedApplications={deployedApplications}
         onSelect={selectApplication}
       />
@@ -201,11 +202,7 @@ export function AddApplicationDialog({
               >
                 Cancel
               </Button>
-              <Button
-                type="submit"
-                form="create-application-form"
-                size="xs"
-              >
+              <Button type="submit" form="create-application-form" size="xs">
                 Create application
               </Button>
             </div>

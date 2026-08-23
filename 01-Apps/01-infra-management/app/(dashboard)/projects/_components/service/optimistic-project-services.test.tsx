@@ -4,8 +4,14 @@ import "@testing-library/jest-dom/vitest";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { notifyProjectServiceCreation } from "@/lib/project-events";
-import { OptimisticProjectServices } from "./optimistic-project-services";
+import {
+  notifyProjectServiceCreation,
+  notifyProjectServiceDeleted,
+} from "@/lib/project-events";
+import {
+  OptimisticProjectServices,
+  OptimisticServiceVisibilityGuard,
+} from "./optimistic-project-services";
 
 const refresh = vi.fn();
 
@@ -16,7 +22,10 @@ vi.mock("next/navigation", () => ({
 describe("OptimisticProjectServices", () => {
   beforeEach(() => {
     refresh.mockReset();
-    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => undefined)));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise(() => undefined)),
+    );
   });
   afterEach(() => {
     cleanup();
@@ -58,7 +67,9 @@ describe("OptimisticProjectServices", () => {
       </OptimisticProjectServices>,
     );
 
-    expect(screen.queryByText("PostgreSQL · Creating…")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("PostgreSQL · Creating…"),
+    ).not.toBeInTheDocument();
     expect(screen.getByText("Real service")).toBeInTheDocument();
 
     await act(async () => Promise.resolve());
@@ -69,8 +80,12 @@ describe("OptimisticProjectServices", () => {
       </OptimisticProjectServices>,
     );
 
-    expect(screen.queryByText("PostgreSQL · Creating…")).not.toBeInTheDocument();
-    expect(screen.getByText("No services in this project.")).toBeInTheDocument();
+    expect(
+      screen.queryByText("PostgreSQL · Creating…"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText("No services in this project."),
+    ).toBeInTheDocument();
   });
 
   it("removes the pending card when creation fails", () => {
@@ -100,7 +115,32 @@ describe("OptimisticProjectServices", () => {
     });
 
     expect(screen.queryByText("redis")).not.toBeInTheDocument();
-    expect(screen.getByText("No services in this project.")).toBeInTheDocument();
+    expect(
+      screen.getByText("No services in this project."),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the empty state immediately when the final service is deleted", () => {
+    render(
+      <OptimisticProjectServices
+        projectId="project-1"
+        existingServices={[
+          { id: "compose-1", name: "Garage with UI", type: "compose" },
+        ]}
+      >
+        <p>Real service</p>
+      </OptimisticProjectServices>,
+    );
+
+    expect(
+      screen.queryByText("No services in this project."),
+    ).not.toBeInTheDocument();
+
+    act(() => notifyProjectServiceDeleted("project-1", "compose-1"));
+
+    expect(
+      screen.getByText("No services in this project."),
+    ).toBeInTheDocument();
   });
 
   it("shows the live status while the project snapshot catches up", async () => {
@@ -146,12 +186,53 @@ describe("OptimisticProjectServices", () => {
     await waitFor(() =>
       expect(screen.getByText("Compose · Running")).toBeInTheDocument(),
     );
-    expect(screen.getByRole("link", { name: /dbgate\.example\.com/ })).toHaveAttribute(
-      "href",
-      "https://dbgate.example.com",
-    );
+    expect(
+      screen.getByRole("link", { name: /dbgate\.example\.com/ }),
+    ).toHaveAttribute("href", "https://dbgate.example.com");
     expect(fetch).toHaveBeenCalledWith(
       "/api/dokploy/projects/project-1/services/compose/compose-1",
     );
+  });
+
+  it("hides a streamed real card until it atomically replaces its optimistic card", () => {
+    const service = { id: "compose-1", name: "Portainer", type: "compose" };
+    const { rerender } = render(
+      <OptimisticProjectServices projectId="project-1" existingServices={[]}>
+        <OptimisticServiceVisibilityGuard service={service}>
+          <p>Real Portainer</p>
+        </OptimisticServiceVisibilityGuard>
+      </OptimisticProjectServices>,
+    );
+
+    act(() => {
+      notifyProjectServiceCreation({
+        phase: "started",
+        service: {
+          requestId: "request-portainer",
+          projectId: "project-1",
+          matchName: "Portainer",
+          displayName: "Portainer",
+          typeLabel: "Compose",
+          serviceType: "compose",
+        },
+      });
+    });
+
+    expect(screen.getByText("Portainer")).toBeInTheDocument();
+    expect(screen.queryByText("Real Portainer")).not.toBeInTheDocument();
+
+    rerender(
+      <OptimisticProjectServices
+        projectId="project-1"
+        existingServices={[service]}
+      >
+        <OptimisticServiceVisibilityGuard service={service}>
+          <p>Real Portainer</p>
+        </OptimisticServiceVisibilityGuard>
+      </OptimisticProjectServices>,
+    );
+
+    expect(screen.queryByText("Compose · Creating…")).not.toBeInTheDocument();
+    expect(screen.getByText("Real Portainer")).toBeInTheDocument();
   });
 });

@@ -34,10 +34,10 @@ Existing deployments may temporarily keep `DOKPLOY_URL`, `DOKPLOY_API_KEY`, and
 optional `DOKPLOY_NAME`. If the database is empty, the application imports them
 once. The imported instance must then be selected from the sidebar.
 
-The application dropdown reads folders from `01-Apps` on the `main` branch of
-the `AlexandruDanCroitoriu/vps-dockploy-setup` GitHub repository. Set the
-server-only `GITHUB_TOKEN` when the repository is private; it only needs read
-access to repository contents.
+The application dropdown uses the repository application manifest in
+`lib/github/repository-applications.ts`. This avoids runtime GitHub API access
+and does not require a `GITHUB_TOKEN`. Add new `01-Apps` folders to that manifest
+when they should appear in the dropdown.
 
 Generate an escaped password hash for a Next.js environment file:
 
@@ -68,6 +68,8 @@ Infra Management using the repository application picker.
 1. In the local Infra Management dashboard, choose this repository application:
    `01-Apps/01-infra-management`.
 2. Use the Node/Next.js build type, run `npm run build`, and start with `npm start`.
+   The repository pins Nixpacks to Node 22 and includes the native build tools
+   required by `better-sqlite3`; no extra build environment variables are needed.
 3. Configure every required environment variable. Set `NEXTAUTH_URL` to the final HTTPS URL.
 4. Expose port `3000`, attach the public domain, and enable HTTPS.
 5. Mount persistent application storage at `/app/data`. The application writes

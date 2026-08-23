@@ -14,11 +14,13 @@ function normalizePath(value: string) {
 export function RepositoryApplicationDropdown({
   disabled,
   applications,
+  applicationsError,
   deployedApplications,
   onSelect,
 }: {
   disabled: boolean;
   applications: RepositoryApplication[];
+  applicationsError: string;
   deployedApplications: Array<{ name: string; sourcePath: string | null }>;
   onSelect: (application: RepositoryApplication) => void;
 }) {
@@ -61,7 +63,15 @@ export function RepositoryApplicationDropdown({
           <p className="border-b border-gray-200 px-3 py-2 text-[11px] font-semibold tracking-wide text-gray-500 uppercase dark:border-white/10 dark:text-gray-400">
             Repository /01-Apps
           </p>
-          {applications.length === 0 ? (
+          {applicationsError ? (
+            <p
+              role="alert"
+              className="px-3 py-4 text-sm text-red-600 dark:text-red-300"
+            >
+              {applicationsError} Check the server-only GITHUB_TOKEN and
+              repository access.
+            </p>
+          ) : applications.length === 0 ? (
             <p className="px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
               No application folders were found.
             </p>

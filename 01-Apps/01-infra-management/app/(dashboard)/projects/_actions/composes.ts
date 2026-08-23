@@ -54,20 +54,55 @@ export async function createComposeAction(
   if ((host || generateDomain) && !definition.domain)
     return { status: "error", message: "This service has no domain target." };
   if (definition.domain?.required && !host)
-    return { status: "error", message: "Enter the DBGate domain hostname." };
+    return {
+      status: "error",
+      message: `Enter the ${definition.name} domain hostname.`,
+    };
   if (!generateDomain && host && !isValidHostname(host))
     return { status: "error", message: "Enter a valid domain hostname." };
   if (
     definition.requiresLoginCredentials &&
     (!loginUsername || !loginPassword)
   ) {
-    return { status: "error", message: "Enter the DBGate login credentials." };
+    return {
+      status: "error",
+      message: `Enter the ${definition.name} login credentials.`,
+    };
   }
   if (loginUsername.length > 255 || loginPassword.length > 255)
     return { status: "error", message: "Login credentials are too long." };
+  if (definition.id === "portainer" && loginPassword.length < 12) {
+    return {
+      status: "error",
+      message:
+        "Portainer requires an administrator password of at least 12 characters.",
+    };
+  }
+  const parameters = Object.fromEntries(
+    (definition.parameterNames ?? []).map((name) => [
+      name,
+      formData.get(name)?.toString() ?? "",
+    ]),
+  );
+  if (definition.parameterNames?.includes("garageCapacityGb")) {
+    const capacityGb = Number(parameters.garageCapacityGb || 20);
+    if (
+      !Number.isSafeInteger(capacityGb) ||
+      capacityGb < 1 ||
+      capacityGb > 1_000_000
+    ) {
+      return {
+        status: "error",
+        message:
+          "Garage capacity must be a whole number from 1 to 1,000,000 GB.",
+      };
+    }
+    parameters.garageCapacityGb = String(capacityGb);
+  }
   const environmentVariables = resolveComposeServiceEnvironment(definition, {
     services: environment.services,
     projectEnvironment: project.env,
+    parameters,
     loginCredentials: definition.requiresLoginCredentials
       ? { username: loginUsername, password: loginPassword }
       : undefined,
@@ -77,6 +112,7 @@ export async function createComposeAction(
     {
       services: environment.services,
       projectEnvironment: project.env,
+      parameters,
       loginCredentials: definition.requiresLoginCredentials
         ? { username: loginUsername, password: loginPassword }
         : undefined,

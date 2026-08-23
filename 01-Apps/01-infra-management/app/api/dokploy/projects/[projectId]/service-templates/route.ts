@@ -20,10 +20,7 @@ function password() {
   return randomBytes(24).toString("base64url");
 }
 
-function databaseForm(
-  type: "postgres" | "redis",
-  environmentId: string,
-) {
+function databaseForm(type: "postgres" | "redis", environmentId: string) {
   const formData = new FormData();
   formData.set("type", type);
   formData.set("environmentId", environmentId);
@@ -49,9 +46,26 @@ export async function POST(
   const { projectId } = await params;
   const payload = (await request.json().catch(() => null)) as {
     templateId?: string;
+    garageCapacityGb?: number;
   } | null;
   if (payload?.templateId !== "postgres-redis-dbgate") {
-    return Response.json({ error: "Invalid service template." }, { status: 400 });
+    return Response.json(
+      { error: "Invalid service template." },
+      { status: 400 },
+    );
+  }
+  const garageCapacityGb = payload.garageCapacityGb ?? 20;
+  if (
+    !Number.isSafeInteger(garageCapacityGb) ||
+    garageCapacityGb < 1 ||
+    garageCapacityGb > 1_000_000
+  ) {
+    return Response.json(
+      {
+        error: "Garage capacity must be a whole number from 1 to 1,000,000 GB.",
+      },
+      { status: 400 },
+    );
   }
 
   const project = await getDokployProject(projectId);
@@ -62,6 +76,7 @@ export async function POST(
       { status: 409 },
     );
   }
+
   const existingTypes = new Set(
     environment.services.map((service) => service.type),
   );
@@ -69,9 +84,22 @@ export async function POST(
     (service) =>
       service.type === "compose" && service.name.toLowerCase() === "dbgate",
   );
-  if (existingTypes.has("postgres") || existingTypes.has("redis") || hasDbGate) {
+  const hasGarage = environment.services.some(
+    (service) =>
+      service.type === "compose" &&
+      ["garage", "garage with ui"].includes(service.name.toLowerCase()),
+  );
+  if (
+    existingTypes.has("postgres") ||
+    existingTypes.has("redis") ||
+    hasDbGate ||
+    hasGarage
+  ) {
     return Response.json(
-      { error: "This template requires PostgreSQL, Redis, and DBGate to be absent." },
+      {
+        error:
+          "This template requires PostgreSQL, Redis, DBGate, and Garage to be absent.",
+      },
       { status: 409 },
     );
   }
@@ -98,8 +126,14 @@ export async function POST(
   const configuration = await getActiveDokployConfiguration();
   const composeForm = new FormData();
   composeForm.set("definitionId", "dbgate");
-  composeForm.set("loginUsername", configuration?.defaultServiceUsername ?? "admin");
-  composeForm.set("loginPassword", configuration?.defaultServicePassword ?? "admin");
+  composeForm.set(
+    "loginUsername",
+    configuration?.defaultServiceUsername ?? "admin",
+  );
+  composeForm.set(
+    "loginPassword",
+    configuration?.defaultServicePassword ?? "admin",
+  );
   if (configuration?.rootDomain) {
     composeForm.set("host", `dbgate.${configuration.rootDomain}`);
   }
@@ -116,6 +150,37 @@ export async function POST(
   } else {
     return Response.json(
       { error: composeResult.message, services: created },
+      { status: 422 },
+    );
+  }
+
+  const garageForm = new FormData();
+  garageForm.set("definitionId", "garage-with-webui");
+  garageForm.set("garageCapacityGb", String(garageCapacityGb));
+  garageForm.set(
+    "loginUsername",
+    configuration?.defaultServiceUsername ?? "admin",
+  );
+  garageForm.set(
+    "loginPassword",
+    configuration?.defaultServicePassword ?? password(),
+  );
+  if (configuration?.rootDomain) {
+    garageForm.set("host", `garage.${configuration.rootDomain}`);
+  }
+  garageForm.set("deployAfterCreate", "on");
+  const garageResult = await createComposeAction(
+    projectId,
+    environment.environmentId,
+    initialState,
+    garageForm,
+  );
+  if (garageResult.createdService) {
+    created.push({ ...garageResult.createdService, name: "Garage with UI" });
+    if (garageResult.status === "error") warnings.push(garageResult.message);
+  } else {
+    return Response.json(
+      { error: garageResult.message, services: created },
       { status: 422 },
     );
   }

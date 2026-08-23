@@ -22,7 +22,10 @@ import { EnvironmentVariableEditor } from "../environment/environment-variable-e
 import { ProjectNameEditor } from "./project-name-editor";
 import { ProjectSettingsMenu } from "./project-settings-menu";
 import { getServiceDisplayName, ServiceCard } from "../service/service-card";
-import { OptimisticProjectServices } from "../service/optimistic-project-services";
+import {
+  OptimisticProjectServices,
+  OptimisticServiceVisibilityGuard,
+} from "../service/optimistic-project-services";
 import { ServiceStatusRefresh } from "../service/service-status-refresh";
 import { DeletedServiceGuard } from "../service/deleted-service-guard";
 import { ServiceTemplateDropdown } from "../service-template/service-template-dropdown";
@@ -34,6 +37,7 @@ export function ProjectCard({
   serviceActionsMenu = false,
   githubProviders,
   repositoryApplications,
+  repositoryApplicationsError,
   rootDomain,
   defaultServiceCredentials,
 }: {
@@ -43,6 +47,7 @@ export function ProjectCard({
   serviceActionsMenu?: boolean;
   githubProviders?: DokployGithubProvider[];
   repositoryApplications?: RepositoryApplication[];
+  repositoryApplicationsError?: string;
   rootDomain: string;
   defaultServiceCredentials: { username: string; password: string };
 }) {
@@ -93,6 +98,8 @@ export function ProjectCard({
                 }))}
                 githubProviders={githubProviders}
                 repositoryApplications={repositoryApplications}
+                repositoryApplicationsError={repositoryApplicationsError ?? ""}
+                rootDomain={rootDomain}
                 deployedApplications={project.environments.flatMap(
                   (environment) =>
                     environment.services
@@ -244,21 +251,23 @@ async function ProjectServices({
             projectId={projectId}
             serviceId={service.id}
           >
-            <ServiceCard
-              service={service}
-              domains={
-                domainResults[index].status === "fulfilled"
-                  ? domainResults[index].value
-                  : []
-              }
-              projectId={projectId}
-              serviceActionsMenu={serviceActionsMenu}
-              href={
-                linkServices
-                  ? `/projects/${encodeURIComponent(projectId)}/services/${service.type}/${encodeURIComponent(service.id)}`
-                  : undefined
-              }
-            />
+            <OptimisticServiceVisibilityGuard service={service}>
+              <ServiceCard
+                service={service}
+                domains={
+                  domainResults[index].status === "fulfilled"
+                    ? domainResults[index].value
+                    : []
+                }
+                projectId={projectId}
+                serviceActionsMenu={serviceActionsMenu}
+                href={
+                  linkServices
+                    ? `/projects/${encodeURIComponent(projectId)}/services/${service.type}/${encodeURIComponent(service.id)}`
+                    : undefined
+                }
+              />
+            </OptimisticServiceVisibilityGuard>
           </DeletedServiceGuard>
         ))}
       </ul>

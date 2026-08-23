@@ -4,16 +4,26 @@ import {
   ArrowTopRightOnSquareIcon,
   CubeIcon,
 } from "@heroicons/react/24/outline";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 import {
   PROJECT_SERVICE_CREATION_EVENT,
+  PROJECT_SERVICE_DELETED_EVENT,
   type PendingProjectService,
   type ProjectServiceCreationDetail,
 } from "@/lib/project-events";
 import { usePeriodicRouterRefresh } from "../use-periodic-router-refresh";
 
 type ExistingService = { id: string; name: string; type: string };
+
+const PendingServicesContext = createContext<PendingProjectService[]>([]);
 
 function matchesExistingService(
   pending: PendingProjectService,
@@ -24,7 +34,8 @@ function matchesExistingService(
     existing.name.toLowerCase() === pending.matchName.toLowerCase() ||
     (["postgres", "mysql", "mariadb", "mongo", "redis"].includes(
       pending.serviceType,
-    ) && existing.type === pending.serviceType)
+    ) &&
+      existing.type === pending.serviceType)
   );
 }
 
@@ -40,6 +51,9 @@ export function OptimisticProjectServices({
   const [pendingServices, setPendingServices] = useState<
     PendingProjectService[]
   >([]);
+  const [deletedServiceIds, setDeletedServiceIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [liveStatuses, setLiveStatuses] = useState<
     Record<string, "running" | "deploying" | "down">
   >({});
@@ -47,21 +61,27 @@ export function OptimisticProjectServices({
     Record<string, Array<{ domainId: string; host: string; https: boolean }>>
   >({});
 
+  const visibleExistingServices = useMemo(
+    () =>
+      existingServices.filter((service) => !deletedServiceIds.has(service.id)),
+    [deletedServiceIds, existingServices],
+  );
+
   const visiblePendingServices = useMemo(
     () =>
       pendingServices.filter(
         (pending) =>
-          !existingServices.some((existing) =>
+          !visibleExistingServices.some((existing) =>
             matchesExistingService(pending, existing),
           ),
       ),
-    [existingServices, pendingServices],
+    [pendingServices, visibleExistingServices],
   );
 
   useEffect(() => {
     const settledRequestIds = pendingServices
       .filter((pending) =>
-        existingServices.some((existing) =>
+        visibleExistingServices.some((existing) =>
           matchesExistingService(pending, existing),
         ),
       )
@@ -75,13 +95,41 @@ export function OptimisticProjectServices({
         ),
       );
     });
-  }, [existingServices, pendingServices]);
+  }, [pendingServices, visibleExistingServices]);
+
+  useEffect(() => {
+    function hideDeletedService(event: Event) {
+      const detail = (
+        event as CustomEvent<{
+          projectId: string;
+          serviceId: string;
+        }>
+      ).detail;
+      if (detail.projectId !== projectId) return;
+      setDeletedServiceIds((current) => {
+        if (current.has(detail.serviceId)) return current;
+        const next = new Set(current);
+        next.add(detail.serviceId);
+        return next;
+      });
+    }
+
+    window.addEventListener(PROJECT_SERVICE_DELETED_EVENT, hideDeletedService);
+    return () =>
+      window.removeEventListener(
+        PROJECT_SERVICE_DELETED_EVENT,
+        hideDeletedService,
+      );
+  }, [projectId]);
 
   useEffect(() => {
     function updatePendingServices(event: Event) {
-      const detail = (event as CustomEvent<ProjectServiceCreationDetail>).detail;
+      const detail = (event as CustomEvent<ProjectServiceCreationDetail>)
+        .detail;
       const eventProjectId =
-        detail.phase === "started" ? detail.service.projectId : detail.projectId;
+        detail.phase === "started"
+          ? detail.service.projectId
+          : detail.projectId;
       if (eventProjectId !== projectId) return;
 
       setPendingServices((current) => {
@@ -105,7 +153,10 @@ export function OptimisticProjectServices({
       });
     }
 
-    window.addEventListener(PROJECT_SERVICE_CREATION_EVENT, updatePendingServices);
+    window.addEventListener(
+      PROJECT_SERVICE_CREATION_EVENT,
+      updatePendingServices,
+    );
     return () =>
       window.removeEventListener(
         PROJECT_SERVICE_CREATION_EVENT,
@@ -168,7 +219,7 @@ export function OptimisticProjectServices({
 
   if (
     visiblePendingServices.length === 0 &&
-    existingServices.length === 0
+    visibleExistingServices.length === 0
   ) {
     return (
       <p className="mt-3 rounded-md bg-gray-50 p-3 text-xs text-gray-500 dark:bg-white/[0.04] dark:text-gray-400">
@@ -178,7 +229,7 @@ export function OptimisticProjectServices({
   }
 
   return (
-    <>
+    <PendingServicesContext.Provider value={visiblePendingServices}>
       {visiblePendingServices.length > 0 && (
         <ul className="mt-3 grid gap-2">
           {visiblePendingServices.map((service) => (
@@ -203,7 +254,8 @@ export function OptimisticProjectServices({
                   </p>
                 </div>
                 <p className="truncate text-xs text-gray-500 dark:text-gray-400">
-                  {service.typeLabel} · {service.serviceId
+                  {service.typeLabel} ·{" "}
+                  {service.serviceId
                     ? liveStatuses[service.requestId] === "running"
                       ? "Running"
                       : liveStatuses[service.requestId] === "down"
@@ -238,6 +290,21 @@ export function OptimisticProjectServices({
         </ul>
       )}
       {children}
-    </>
+    </PendingServicesContext.Provider>
   );
+}
+
+export function OptimisticServiceVisibilityGuard({
+  service,
+  children,
+}: {
+  service: ExistingService;
+  children: ReactNode;
+}) {
+  const pendingServices = useContext(PendingServicesContext);
+  return pendingServices.some((pending) =>
+    matchesExistingService(pending, service),
+  )
+    ? null
+    : children;
 }

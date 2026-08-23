@@ -5,7 +5,7 @@ import {
   getDokployGithubProviders,
   getDokployProjects,
 } from "@/lib/dokploy";
-import { getRepositoryApplications } from "@/lib/github/repository-applications";
+import { getRepositoryApplicationsResult } from "@/lib/github/repository-applications";
 
 import { ProjectCard } from "./_components/project/project-card";
 import { CreateProjectDialog } from "./_components/project/create-project-dialog";
@@ -58,7 +58,7 @@ async function ProjectsContent() {
     await Promise.all([
       getDokployProjects(),
       getDokployGithubProviders().catch(() => []),
-      getRepositoryApplications().catch(() => []),
+      getRepositoryApplicationsResult(),
       getActiveDokployConfiguration(),
     ]);
 
@@ -77,7 +77,8 @@ async function ProjectsContent() {
                 linkServices
                 serviceActionsMenu
                 githubProviders={githubProviders}
-                repositoryApplications={repositoryApplications}
+                repositoryApplications={repositoryApplications.applications}
+                repositoryApplicationsError={repositoryApplications.error}
                 rootDomain={activeInstance?.rootDomain ?? ""}
                 defaultServiceCredentials={{
                   username: activeInstance?.defaultServiceUsername ?? "admin",

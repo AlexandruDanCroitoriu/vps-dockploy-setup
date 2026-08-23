@@ -33,6 +33,7 @@ type ComposeServiceOption = {
   domainRequired: boolean;
   defaultDomainSubdomain?: string;
   requiresLoginCredentials: boolean;
+  supportsGarageCapacity: boolean;
 };
 
 export function AddComposeDialog({
@@ -192,11 +193,7 @@ export function AddComposeDialog({
               >
                 Cancel
               </Button>
-              <Button
-                type="submit"
-                form="create-compose-form"
-                size="xs"
-              >
+              <Button type="submit" form="create-compose-form" size="xs">
                 Create service
               </Button>
             </div>
@@ -218,9 +215,12 @@ export function AddComposeDialog({
             </p>
             {selectedDefinition.requiresLoginCredentials && (
               <div className="grid gap-3 sm:grid-cols-2">
-                <FormField label="DBGate username" htmlFor="dbgate-username">
+                <FormField
+                  label={`${selectedDefinition.name} username`}
+                  htmlFor="compose-login-username"
+                >
                   <input
-                    id="dbgate-username"
+                    id="compose-login-username"
                     name="loginUsername"
                     type="text"
                     required
@@ -229,9 +229,12 @@ export function AddComposeDialog({
                     className={inputClassName}
                   />
                 </FormField>
-                <FormField label="DBGate password" htmlFor="dbgate-password">
+                <FormField
+                  label={`${selectedDefinition.name} password`}
+                  htmlFor="compose-login-password"
+                >
                   <input
-                    id="dbgate-password"
+                    id="compose-login-password"
                     name="loginPassword"
                     type="text"
                     required
@@ -243,6 +246,24 @@ export function AddComposeDialog({
                   />
                 </FormField>
               </div>
+            )}
+            {selectedDefinition.supportsGarageCapacity && (
+              <FormField
+                label="Garage storage capacity (GB)"
+                htmlFor="compose-garage-capacity-gb"
+              >
+                <input
+                  id="compose-garage-capacity-gb"
+                  name="garageCapacityGb"
+                  type="number"
+                  min={1}
+                  max={1_000_000}
+                  step={1}
+                  required
+                  defaultValue={20}
+                  className={inputClassName}
+                />
+              </FormField>
             )}
             {selectedDefinition.supportsDomain && (
               <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">

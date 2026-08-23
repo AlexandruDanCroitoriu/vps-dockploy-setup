@@ -7,7 +7,7 @@ import {
   getDokployGithubProviders,
   getDokployProject,
 } from "@/lib/dokploy";
-import { getRepositoryApplications } from "@/lib/github/repository-applications";
+import { getRepositoryApplicationsResult } from "@/lib/github/repository-applications";
 
 import { ProjectCard } from "../_components/project/project-card";
 import { ReloadButton } from "../_components/reload-button";
@@ -34,7 +34,7 @@ async function ProjectContent({
     await Promise.all([
       getDokployProject(projectId),
       getDokployGithubProviders().catch(() => []),
-      getRepositoryApplications().catch(() => []),
+      getRepositoryApplicationsResult(),
       getActiveDokployConfiguration(),
     ]);
 
@@ -58,7 +58,8 @@ async function ProjectContent({
           linkServices
           serviceActionsMenu
           githubProviders={githubProviders}
-          repositoryApplications={repositoryApplications}
+          repositoryApplications={repositoryApplications.applications}
+          repositoryApplicationsError={repositoryApplications.error}
           rootDomain={activeInstance?.rootDomain ?? ""}
           defaultServiceCredentials={{
             username: activeInstance?.defaultServiceUsername ?? "admin",

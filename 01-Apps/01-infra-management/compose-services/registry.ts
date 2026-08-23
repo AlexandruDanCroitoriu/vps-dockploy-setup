@@ -6,11 +6,14 @@ import {
 } from "@/lib/dokploy";
 
 import { dbGateService } from "./dbgate";
+import { garageService } from "./garage";
+import { portainerService } from "./portainer";
 
 export type ComposeServiceDefinitionContext = Readonly<{
   services: readonly DokployService[];
   projectEnvironment: string;
   loginCredentials?: Readonly<{ username: string; password: string }>;
+  parameters?: Readonly<Record<string, string>>;
 }>;
 
 export type ComposeServiceDefinition = Readonly<{
@@ -24,6 +27,7 @@ export type ComposeServiceDefinition = Readonly<{
     string | ((context: ComposeServiceDefinitionContext) => string);
   environmentTarget?: "service" | "project";
   requiresLoginCredentials?: boolean;
+  parameterNames?: readonly string[];
   domain?: Readonly<{
     serviceName: string;
     defaultSubdomain?: string;
@@ -38,6 +42,8 @@ export type ComposeServiceDefinition = Readonly<{
 // Keep passwords, tokens, and other secrets out of repository-backed definitions.
 export const composeServiceDefinitions: readonly ComposeServiceDefinition[] = [
   dbGateService,
+  garageService,
+  portainerService,
 ];
 
 export function getComposeServiceDefinition(id: string) {
@@ -84,7 +90,14 @@ export function resolveComposeProjectEnvironmentKeys(
 }
 
 export const composeServiceOptions = composeServiceDefinitions.map(
-  ({ id, name, description, domain, requiresLoginCredentials }) => ({
+  ({
+    id,
+    name,
+    description,
+    domain,
+    requiresLoginCredentials,
+    parameterNames,
+  }) => ({
     id,
     name,
     description,
@@ -94,5 +107,7 @@ export const composeServiceOptions = composeServiceDefinitions.map(
     domainRequired: domain?.required === true,
     defaultDomainSubdomain: domain?.defaultSubdomain,
     requiresLoginCredentials: requiresLoginCredentials === true,
+    supportsGarageCapacity:
+      parameterNames?.includes("garageCapacityGb") === true,
   }),
 );
