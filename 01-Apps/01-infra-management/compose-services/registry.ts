@@ -23,6 +23,7 @@ export type ComposeServiceDefinition = Readonly<{
   requiresLoginCredentials?: boolean;
   domain?: Readonly<{
     serviceName: string;
+    defaultSubdomain?: string;
     port: number;
     generateByDefault?: boolean;
     httpsByDefault?: boolean;
@@ -74,6 +75,7 @@ export const composeServiceOptions = composeServiceDefinitions.map(
     automaticDomain: domain?.generateByDefault === true,
     httpsByDefault: domain?.httpsByDefault === true,
     domainRequired: domain?.required === true,
+    defaultDomainSubdomain: domain?.defaultSubdomain,
     requiresLoginCredentials: requiresLoginCredentials === true,
   }),
 );

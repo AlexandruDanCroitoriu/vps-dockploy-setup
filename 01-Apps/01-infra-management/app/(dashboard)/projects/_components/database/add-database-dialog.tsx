@@ -8,6 +8,8 @@ import { notifyProjectsChanged } from "@/lib/project-events";
 
 import type { DokployDatabaseType } from "@/lib/dokploy";
 import { AppDialog } from "@/components/ui/dialog";
+import { DeployAfterCreateOption } from "@/components/ui/deploy-after-create-option";
+import { useClickOutside } from "@/components/ui/use-click-outside";
 import { FormField, inputClassName } from "@/components/ui/form-field";
 
 import { createDatabaseAction } from "../../_actions/databases";
@@ -78,6 +80,8 @@ export function AddDatabaseDialog({
   environments: Array<{ environmentId: string; name: string }>;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isListOpen, setIsListOpen] = useState(false);
+  const listRef = useClickOutside<HTMLDivElement>(isListOpen, setIsListOpen);
   const [type, setType] = useState<DokployDatabaseType | null>(null);
   const [name, setName] = useState("");
   const [databaseName, setDatabaseName] = useState("");
@@ -104,8 +108,7 @@ export function AddDatabaseDialog({
   }, [router, state]);
 
   function openDialog() {
-    setType(null);
-    setIsOpen(true);
+    setIsListOpen((open) => !open);
   }
 
   function selectDatabase(option: (typeof databaseOptions)[number]) {
@@ -114,187 +117,197 @@ export function AddDatabaseDialog({
     setDatabaseName(option.defaultName);
     setDatabaseUser(option.defaultName);
     setPassword(generatePassword());
+    setIsListOpen(false);
+    setIsOpen(true);
+  }
+
+  function returnToDatabaseList() {
+    setIsOpen(false);
+    setType(null);
+    setIsListOpen(true);
   }
 
   return (
     <>
-      <button
-        type="button"
-        onClick={openDialog}
-        disabled={environments.length === 0}
-        title={
-          environments.length === 0
-            ? "Create a project environment before adding a database"
-            : "Add database"
-        }
-        className="inline-flex items-center rounded-md bg-indigo-600 p-2 text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        <span className="sr-only">Add database</span>
-        <CircleStackIcon className="size-4" aria-hidden="true" />
-      </button>
-
-      {isOpen && (
-        <AppDialog
-          open
-          onClose={() => setIsOpen(false)}
+      <div ref={listRef} className="relative">
+        <button
+          type="button"
+          onClick={openDialog}
+          disabled={environments.length === 0}
           title={
-            type ? `Configure ${selectedOption?.label}` : "Choose a database"
+            environments.length === 0
+              ? "Create a project environment before adding a database"
+              : "Add database"
           }
-          description={
-            type
-              ? "Review the defaults and create the database."
-              : "Select the database service to add to this project."
-          }
-          headerActions={
-            type ? (
-              <button
-                type="button"
-                onClick={() => setType(null)}
-                className="rounded p-1 text-gray-400"
-              >
-                <span className="sr-only">Choose another database</span>
-                <ArrowLeftIcon className="size-4" />
-              </button>
-            ) : null
-          }
+          aria-expanded={isListOpen}
+          className="inline-flex items-center rounded-md bg-indigo-600 p-2 text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <form action={formAction}>
-            {!type ? (
-              <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-3">
-                {databaseOptions.map((option) => (
+          <span className="sr-only">Add database</span>
+          <CircleStackIcon className="size-4" aria-hidden="true" />
+        </button>
+
+        {isListOpen && (
+          <div className="absolute right-0 z-30 mt-2 w-64 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl dark:border-white/10 dark:bg-gray-900">
+            <p className="border-b border-gray-200 px-3 py-2 text-[11px] font-semibold tracking-wide text-gray-500 uppercase dark:border-white/10 dark:text-gray-400">
+              Database services
+            </p>
+            <ul className="py-1">
+              {databaseOptions.map((option) => (
+                <li key={option.value}>
                   <button
-                    key={option.value}
                     type="button"
                     onClick={() => selectDatabase(option)}
-                    className="group flex min-h-28 flex-col items-center justify-center gap-3 rounded-lg border border-gray-200 bg-white p-4 text-center hover:border-indigo-400 hover:bg-indigo-50/40 dark:border-white/10 dark:bg-gray-800/40 dark:hover:border-indigo-400/60 dark:hover:bg-indigo-500/5"
+                    className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-indigo-50 dark:hover:bg-indigo-500/10"
                   >
                     <span
-                      className={`flex size-11 items-center justify-center rounded-lg ${option.color}`}
+                      className={`flex size-8 shrink-0 items-center justify-center rounded-md ${option.color}`}
                     >
                       <Image
                         src={option.logo}
                         alt=""
-                        width={28}
-                        height={28}
+                        width={20}
+                        height={20}
                         unoptimized
-                        className="size-7 object-contain"
+                        className="size-5 object-contain"
                       />
                     </span>
-                    <span className="text-sm font-semibold text-gray-800 group-hover:text-indigo-600 dark:text-gray-200 dark:group-hover:text-indigo-300">
+                    <span className="text-sm font-medium text-gray-800 dark:text-gray-200">
                       {option.label}
                     </span>
                   </button>
-                ))}
-              </div>
-            ) : (
-              <>
-                <input type="hidden" name="type" value={type} />
-                <div className="grid gap-3 px-5 py-4 sm:grid-cols-2">
-                  {state.status === "error" && (
-                    <p className="text-sm text-red-600 sm:col-span-2 dark:text-red-400">
-                      {state.message}
-                    </p>
-                  )}
-                  {environments.length === 1 ? (
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+
+      {isOpen && type && (
+        <AppDialog
+          open
+          onClose={() => setIsOpen(false)}
+          title={`Configure ${selectedOption?.label}`}
+          description="Review the defaults and create the database."
+          headerActions={
+            <button
+              type="button"
+              onClick={returnToDatabaseList}
+              className="rounded p-1 text-gray-400"
+            >
+              <span className="sr-only">Choose another database</span>
+              <ArrowLeftIcon className="size-4" />
+            </button>
+          }
+        >
+          <form action={formAction}>
+            <>
+              <input type="hidden" name="type" value={type} />
+              <div className="grid gap-3 px-5 py-4 sm:grid-cols-2">
+                {state.status === "error" && (
+                  <p className="text-sm text-red-600 sm:col-span-2 dark:text-red-400">
+                    {state.message}
+                  </p>
+                )}
+                {environments.length === 1 ? (
+                  <input
+                    type="hidden"
+                    name="environmentId"
+                    value={environments[0].environmentId}
+                  />
+                ) : (
+                  <FormField label="Environment">
+                    <select name="environmentId" className={inputClassName}>
+                      {environments.map((environment) => (
+                        <option
+                          key={environment.environmentId}
+                          value={environment.environmentId}
+                        >
+                          {environment.name}
+                        </option>
+                      ))}
+                    </select>
+                  </FormField>
+                )}
+                <FormField label="Service name">
+                  <input
+                    name="name"
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    required
+                    maxLength={255}
+                    className={inputClassName}
+                  />
+                </FormField>
+                {needsDatabaseName && (
+                  <FormField label="Database name">
                     <input
-                      type="hidden"
-                      name="environmentId"
-                      value={environments[0].environmentId}
-                    />
-                  ) : (
-                    <FormField label="Environment">
-                      <select name="environmentId" className={inputClassName}>
-                        {environments.map((environment) => (
-                          <option
-                            key={environment.environmentId}
-                            value={environment.environmentId}
-                          >
-                            {environment.name}
-                          </option>
-                        ))}
-                      </select>
-                    </FormField>
-                  )}
-                  <FormField label="Service name">
-                    <input
-                      name="name"
-                      value={name}
-                      onChange={(event) => setName(event.target.value)}
+                      name="databaseName"
+                      value={databaseName}
+                      onChange={(event) => setDatabaseName(event.target.value)}
                       required
                       maxLength={255}
                       className={inputClassName}
                     />
                   </FormField>
-                  {needsDatabaseName && (
-                    <FormField label="Database name">
-                      <input
-                        name="databaseName"
-                        value={databaseName}
-                        onChange={(event) =>
-                          setDatabaseName(event.target.value)
-                        }
-                        required
-                        maxLength={255}
-                        className={inputClassName}
-                      />
-                    </FormField>
-                  )}
-                  {needsUser && (
-                    <FormField label="Database user">
-                      <input
-                        name="databaseUser"
-                        value={databaseUser}
-                        onChange={(event) =>
-                          setDatabaseUser(event.target.value)
-                        }
-                        required
-                        maxLength={255}
-                        className={inputClassName}
-                      />
-                    </FormField>
-                  )}
-                  <div className="sm:col-span-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                        Password
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => setPassword(generatePassword())}
-                        className="text-xs font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-300"
-                      >
-                        Generate another
-                      </button>
-                    </div>
+                )}
+                {needsUser && (
+                  <FormField label="Database user">
                     <input
-                      name="databasePassword"
-                      value={password}
-                      onChange={(event) => setPassword(event.target.value)}
+                      name="databaseUser"
+                      value={databaseUser}
+                      onChange={(event) => setDatabaseUser(event.target.value)}
                       required
                       maxLength={255}
                       className={inputClassName}
                     />
+                  </FormField>
+                )}
+                <div className="sm:col-span-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                      Password
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setPassword(generatePassword())}
+                      className="text-xs font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-300"
+                    >
+                      Generate another
+                    </button>
                   </div>
+                  <input
+                    name="databasePassword"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    required
+                    maxLength={255}
+                    className={inputClassName}
+                  />
                 </div>
+                <DeployAfterCreateOption
+                  defaultChecked
+                  description="Start the database's first deployment immediately."
+                  className="sm:col-span-2"
+                />
+              </div>
 
-                <div className="flex justify-end gap-2 border-t border-gray-200 px-5 py-4 dark:border-white/10">
-                  <button
-                    type="button"
-                    onClick={() => setType(null)}
-                    className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/5"
-                  >
-                    Back
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={pending}
-                    className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {pending ? "Creating…" : "Create database"}
-                  </button>
-                </div>
-              </>
-            )}
+              <div className="flex justify-end gap-2 border-t border-gray-200 px-5 py-4 dark:border-white/10">
+                <button
+                  type="button"
+                  onClick={returnToDatabaseList}
+                  className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/5"
+                >
+                  Back
+                </button>
+                <button
+                  type="submit"
+                  disabled={pending}
+                  className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {pending ? "Creating…" : "Create database"}
+                </button>
+              </div>
+            </>
           </form>
         </AppDialog>
       )}

@@ -40,8 +40,28 @@ administrator, one application replica, and server-side access to Dokploy.
   `normalizers.ts`, validation in `validators.ts`, and endpoint-specific operations
   in their corresponding feature modules.
 - `lib/logs/` contains pure deployment-log parsing and formatting.
+- `lib/storage/` owns the SQLite connection, ordered schema migrations, and
+  Dockploy-instance persistence. Keep summary queries separate from
+  secret-bearing configuration queries. The database contains plaintext API
+  keys and service credentials and must retain private filesystem permissions.
 - `tests/e2e/` contains Playwright browser tests. Unit and component tests are
   colocated with the source they cover.
+
+## Dockploy instance boundaries
+
+- The active instance ID is stored in the HTTP-only `active_dokploy_id` cookie.
+- Use `getActiveDokployInstanceSummary()` for guards, navigation, IDs, names,
+  URLs, and domains. Use `getActiveDokployConfiguration()` only when a server
+  operation or authenticated credential-editing form genuinely needs secrets.
+- Never add API keys or default service passwords to instance summary queries,
+  sidebar props, general route-handler responses, logs, or error messages.
+- Project routes and APIs require an explicitly selected instance; do not add an
+  implicit first-instance fallback.
+- Post-create deployment fields use
+  `components/ui/deploy-after-create-option.tsx`, and the corresponding actions
+  use the shared deployment helpers in `projects/_actions/shared.ts`.
+- Every new SQLite migration must include an upgrade-path test starting from the
+  previous schema, plus an idempotency check.
 
 ## Authentication architecture
 

@@ -1,6 +1,10 @@
 import { Suspense } from "react";
 
-import { getDokployGithubProviders, getDokployProjects } from "@/lib/dokploy";
+import {
+  getActiveDokployConfiguration,
+  getDokployGithubProviders,
+  getDokployProjects,
+} from "@/lib/dokploy";
 import { getRepositoryApplications } from "@/lib/github/repository-applications";
 
 import { ProjectCard } from "./_components/project/project-card";
@@ -50,13 +54,13 @@ function ProjectsLoading() {
 }
 
 async function ProjectsContent() {
-  const [projects, githubProviders, repositoryApplications] = await Promise.all(
-    [
+  const [projects, githubProviders, repositoryApplications, activeInstance] =
+    await Promise.all([
       getDokployProjects(),
       getDokployGithubProviders().catch(() => []),
       getRepositoryApplications().catch(() => []),
-    ],
-  );
+      getActiveDokployConfiguration(),
+    ]);
 
   return (
     <>
@@ -74,6 +78,11 @@ async function ProjectsContent() {
                 serviceActionsMenu
                 githubProviders={githubProviders}
                 repositoryApplications={repositoryApplications}
+                rootDomain={activeInstance?.rootDomain ?? ""}
+                defaultServiceCredentials={{
+                  username: activeInstance?.defaultServiceUsername ?? "admin",
+                  password: activeInstance?.defaultServicePassword ?? "admin",
+                }}
               />
             </div>
           ))}

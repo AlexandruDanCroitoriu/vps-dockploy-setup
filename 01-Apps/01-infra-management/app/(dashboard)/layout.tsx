@@ -1,6 +1,8 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/auth";
 import {
+  getActiveDokployInstanceSummary,
+  getDokployInstanceSummaries,
   getDokployProjects,
   getServiceTypeLabel,
   isDatabaseService,
@@ -15,12 +17,16 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const instances = getDokployInstanceSummaries();
+  const activeInstance = await getActiveDokployInstanceSummary();
   const [session, result] = await Promise.all([
     getServerSession(authOptions),
-    getDokployProjects().then(
-      (projects) => ({ projects, error: "" }),
-      () => ({ projects: [], error: "Unable to load projects." }),
-    ),
+    activeInstance
+      ? getDokployProjects().then(
+          (projects) => ({ projects, error: "" }),
+          () => ({ projects: [], error: "Unable to load projects." }),
+        )
+      : Promise.resolve({ projects: [], error: "" }),
   ]);
   const projects: SidebarProject[] = result.projects.map(
     ({ projectId, name, environments }) => ({
@@ -39,8 +45,11 @@ export default async function DashboardLayout({
   );
   return (
     <DashboardShell
+      key={activeInstance?.id ?? "no-active-instance"}
       initialProjects={projects}
       initialProjectsError={result.error}
+      instances={instances}
+      activeInstanceId={activeInstance?.id ?? null}
       userName={session?.user?.name || "Administrator"}
     >
       {children}

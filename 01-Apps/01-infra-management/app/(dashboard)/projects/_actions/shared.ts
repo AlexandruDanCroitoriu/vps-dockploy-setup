@@ -1,7 +1,11 @@
 import { getServerSession } from "next-auth";
 
 import { authOptions } from "@/auth";
-import { DokployApiError } from "@/lib/dokploy";
+import {
+  deployDokployService,
+  DokployApiError,
+  type DokployServiceType,
+} from "@/lib/dokploy";
 
 export type ActionState = {
   status: "idle" | "success" | "error";
@@ -30,4 +34,20 @@ export function getActionError(
     };
   }
   return { status: "error", message: fallback };
+}
+
+export function deployAfterCreateRequested(formData: FormData) {
+  return formData.get("deployAfterCreate") === "on";
+}
+
+export async function startInitialDeployment(
+  type: DokployServiceType,
+  serviceId: string,
+) {
+  try {
+    await deployDokployService(type, serviceId);
+    return true;
+  } catch {
+    return false;
+  }
 }

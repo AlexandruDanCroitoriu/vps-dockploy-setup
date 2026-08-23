@@ -13,6 +13,11 @@ test.describe("connected Dokploy workflows", () => {
     await page.getByLabel("Password").fill(process.env.E2E_PASSWORD || "");
     await page.getByRole("button", { name: "Sign in" }).click();
     await expect(page).toHaveURL(/\/$/);
+    const projectsLink = page.getByRole("link", { name: "Projects" });
+    if (!(await projectsLink.isVisible())) {
+      await page.locator("#dockploy-instance").selectOption({ index: 1 });
+      await expect(projectsLink).toBeVisible();
+    }
   });
 
   test("projects, services, databases, domains, and deployments are reachable", async ({

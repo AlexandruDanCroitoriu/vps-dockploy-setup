@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 
 import { authOptions } from "@/auth";
 import {
+  getActiveDokployInstanceSummary,
   getDokployDeploymentLogs,
   getDokployDeploymentStatus,
 } from "@/lib/dokploy";
@@ -18,6 +19,12 @@ export async function GET(
 
   if (!session) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await getActiveDokployInstanceSummary())) {
+    return new Response("No Dockploy instance is selected.\n", {
+      status: 409,
+      headers: { "content-type": "text/plain; charset=utf-8" },
+    });
   }
 
   const { deploymentId } = await params;

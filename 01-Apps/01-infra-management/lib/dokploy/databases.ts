@@ -1,6 +1,6 @@
 import "server-only";
 import { dokployPost } from "./client";
-import { databaseCredentials, isRecord } from "./normalizers";
+import { databaseCredentials, isRecord, stringValue } from "./normalizers";
 import { mergeDokployProjectEnv } from "./projects";
 import type { DokployDatabaseType, DokployService } from "./types";
 
@@ -26,15 +26,18 @@ export async function createDokployDatabase(input: {
     : {
         appName: "",
       };
-  return databaseCredentials(
-    {
-      ...values,
-      databaseUser: input.databaseUser ?? values.databaseUser,
-      databasePassword: input.databasePassword,
-      databaseName: input.databaseName ?? values.databaseName,
-    },
-    input.type,
-  );
+  return {
+    databaseId: stringValue(values[`${input.type}Id`]),
+    credentials: databaseCredentials(
+      {
+        ...values,
+        databaseUser: input.databaseUser ?? values.databaseUser,
+        databasePassword: input.databasePassword,
+        databaseName: input.databaseName ?? values.databaseName,
+      },
+      input.type,
+    ),
+  };
 }
 
 export function databaseProjectEnvironmentEntries(

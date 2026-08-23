@@ -1,6 +1,6 @@
 # Infra Management
 
-Infra Management is a private, single-user Next.js dashboard for operating a Dokploy instance. It provides project and service browsing, GitHub-backed application creation, environment editing, deployments and stored logs, database creation and credentials, and domain/DNS management.
+Infra Management is a private, single-user Next.js dashboard for operating multiple Dockploy instances. It provides project and service browsing, GitHub-backed application creation, environment editing, deployments and stored logs, database creation and credentials, and domain/DNS management.
 
 The Add application dropdown discovers directories under `01-Apps`; selecting one opens a dialog that configures the repository, branch, monorepo build and watch paths, build type, automatic deployments, and an optional HTTPS domain. It uses an installed Dokploy GitHub provider when available and otherwise falls back to the public Git HTTPS URL. Private deployment sources require a Dokploy GitHub provider.
 
@@ -19,8 +19,20 @@ Copy `.env.example` to `.env.local` for local development and configure:
 - `ADMIN_PASSWORD_HASH`: bcrypt password hash with cost 12
 - `AUTH_SECRET`: stable random secret used to encrypt session JWTs
 - `NEXTAUTH_URL`: public application URL
-- `DOKPLOY_URL`: base URL of the Dokploy instance, without `/api`
-- `DOKPLOY_API_KEY`: API key created in Dokploy for this application
+
+Dockploy root domains, API/CLI keys, and default service login credentials are
+configured from the authenticated Dashboard. The selected instance's values
+prefill service forms such as DBGate. Keys and service credentials are stored as
+plaintext in SQLite, so restrict access to the application, database file,
+persistent volume, snapshots, and backups. The database and its sidecar files
+are excluded from Git. Production defaults to
+`/app/data/infra-management.sqlite`; no database-path environment variable is
+required. A locally running development copy uses
+`data/infra-management.sqlite` inside the repository.
+
+Existing deployments may temporarily keep `DOKPLOY_URL`, `DOKPLOY_API_KEY`, and
+optional `DOKPLOY_NAME`. If the database is empty, the application imports them
+once. The imported instance must then be selected from the sidebar.
 
 The application dropdown reads folders from GitHub. Its repository defaults to
 this monorepo and can be changed with `GITHUB_REPOSITORY_OWNER`,
@@ -49,15 +61,25 @@ npm run build
 
 Unit and component tests use Vitest and React Testing Library. Playwright starts a local test server for the login tests. Install its browser and Linux dependencies once with `npx playwright install --with-deps chromium`; connected Dokploy workflow tests run when `E2E_DOKPLOY=1`, `E2E_BASE_URL`, `E2E_USERNAME`, and `E2E_PASSWORD` are configured.
 
-## Deploy with Dokploy
+## Deploy with Dockploy
 
-1. Create an application from this repository and select this project directory as the build context.
+This application is intended to be deployed from a locally running copy of
+Infra Management using the repository application picker.
+
+1. In the local Infra Management dashboard, choose this repository application:
+   `01-Apps/01-infra-management`.
 2. Use the Node/Next.js build type, run `npm run build`, and start with `npm start`.
 3. Configure every required environment variable. Set `NEXTAUTH_URL` to the final HTTPS URL.
 4. Expose port `3000`, attach the public domain, and enable HTTPS.
-5. Keep one replica. Login throttling is process-local and is not shared between replicas.
+5. Mount persistent application storage at `/app/data`. The application writes
+   `/app/data/infra-management.sqlite` automatically. Without that mount,
+   configured instances are lost when the container is replaced.
+6. Keep one replica. Login throttling is process-local and SQLite is not shared
+   between replicas.
 
-The Dokploy API URL must be reachable from the application container. The API key is server-only and must never use a `NEXT_PUBLIC_` prefix.
+Each configured Dockploy API URL must be reachable from the application
+container. API keys remain server-only and must never use a `NEXT_PUBLIC_`
+prefix.
 
 ## Security and troubleshooting
 

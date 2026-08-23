@@ -18,9 +18,11 @@ import {
 } from "@/lib/dokploy";
 
 import {
+  deployAfterCreateRequested,
   getActionError,
   requireAuthenticatedSession,
   SESSION_EXPIRED_STATE,
+  startInitialDeployment,
   type ActionState,
 } from "./shared";
 
@@ -37,6 +39,7 @@ export async function createComposeAction(
   const host = formData.get("host")?.toString().trim().toLowerCase() ?? "";
   const loginUsername = formData.get("loginUsername")?.toString().trim() ?? "";
   const loginPassword = formData.get("loginPassword")?.toString() ?? "";
+  const deployAfterCreate = deployAfterCreateRequested(formData);
   const definition = getComposeServiceDefinition(definitionId);
   const generateDomain = Boolean(
     definition?.domain?.generateByDefault && !host,
@@ -107,7 +110,7 @@ export async function createComposeAction(
         await updateDokployProjectEnv(projectId, projectEnvironment);
       }
     }
-    await createDokployRawCompose({
+    const composeId = await createDokployRawCompose({
       name: definition.name,
       environmentId,
       composeFile: definition.composeFile,
@@ -128,9 +131,25 @@ export async function createComposeAction(
             }
           : undefined,
     });
+    if (deployAfterCreate) {
+      if (!(await startInitialDeployment("compose", composeId))) {
+        revalidatePath("/projects");
+        revalidatePath(`/projects/${projectId}`);
+        return {
+          status: "error",
+          message:
+            "The Compose service was created, but its first deployment could not be started.",
+        };
+      }
+    }
     revalidatePath("/projects");
     revalidatePath(`/projects/${projectId}`);
-    return { status: "success", message: "Compose service created." };
+    return {
+      status: "success",
+      message: deployAfterCreate
+        ? "Compose service created and deployment started."
+        : "Compose service created.",
+    };
   } catch (error) {
     return getActionError(
       error,

@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 
 import { authOptions } from "@/auth";
 import {
+  getActiveDokployInstanceSummary,
   getDokployProjects,
   getServiceTypeLabel,
   isDatabaseService,
@@ -12,6 +13,13 @@ export async function GET() {
 
   if (!session) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  if (!(await getActiveDokployInstanceSummary())) {
+    return Response.json(
+      { error: "No Dockploy instance is selected." },
+      { status: 409 },
+    );
   }
 
   try {

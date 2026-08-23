@@ -4,6 +4,7 @@ import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import {
   Cog6ToothIcon,
   PlayIcon,
+  RocketLaunchIcon,
   StopIcon,
   TrashIcon,
 } from "@heroicons/react/24/outline";
@@ -39,7 +40,9 @@ export function ProjectSettingsMenu({
     initialState,
   );
   const [submitting, startTransition] = useTransition();
-  const [operation, setOperation] = useState<"start" | "stop" | null>(null);
+  const [operation, setOperation] = useState<
+    "deploy" | "start" | "stop" | null
+  >(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletingServiceIds, setDeletingServiceIds] = useState<Set<string>>(
     () => new Set(),
@@ -58,7 +61,7 @@ export function ProjectSettingsMenu({
   const busy = pending || submitting || deletePending;
   const deletingServices = deletingServiceIds.size > 0;
 
-  function updateAllServices(operation: "start" | "stop") {
+  function updateAllServices(operation: "deploy" | "start" | "stop") {
     setOperation(operation);
     const formData = new FormData();
     formData.set("operation", operation);
@@ -133,8 +136,19 @@ export function ProjectSettingsMenu({
           <MenuItem>
             <button
               type="button"
+              onClick={() => updateAllServices("deploy")}
+              disabled={busy || serviceCount === 0}
+              className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-gray-700 disabled:opacity-50 data-focus:bg-indigo-50 data-focus:text-indigo-700 dark:text-gray-300 dark:data-focus:bg-indigo-500/10 dark:data-focus:text-indigo-300"
+            >
+              <RocketLaunchIcon className="size-4" aria-hidden="true" />
+              Deploy all services
+            </button>
+          </MenuItem>
+          <MenuItem>
+            <button
+              type="button"
               onClick={() => updateAllServices("start")}
-              disabled={busy}
+              disabled={busy || serviceCount === 0}
               className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-gray-700 disabled:opacity-50 data-focus:bg-emerald-50 data-focus:text-emerald-700 dark:text-gray-300 dark:data-focus:bg-emerald-500/10 dark:data-focus:text-emerald-300"
             >
               <PlayIcon className="size-4" aria-hidden="true" />
@@ -145,7 +159,7 @@ export function ProjectSettingsMenu({
             <button
               type="button"
               onClick={() => updateAllServices("stop")}
-              disabled={busy}
+              disabled={busy || serviceCount === 0}
               className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-gray-700 disabled:opacity-50 data-focus:bg-red-50 data-focus:text-red-700 dark:text-gray-300 dark:data-focus:bg-red-500/10 dark:data-focus:text-red-300"
             >
               <StopIcon className="size-4" aria-hidden="true" />
@@ -301,9 +315,11 @@ export function ProjectSettingsMenu({
                 d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
               />
             </svg>
-            {operation === "start"
-              ? "Starting all services…"
-              : "Stopping all services…"}
+            {operation === "deploy"
+              ? "Deploying all services…"
+              : operation === "start"
+                ? "Starting all services…"
+                : "Stopping all services…"}
           </span>
         </div>
       )}

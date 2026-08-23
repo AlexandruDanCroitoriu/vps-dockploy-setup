@@ -66,7 +66,9 @@ export async function setProjectServicesStateAction(
   const requestedOperation = formData.get("operation")?.toString();
   if (
     !projectId ||
-    (requestedOperation !== "start" && requestedOperation !== "stop")
+    (requestedOperation !== "deploy" &&
+      requestedOperation !== "start" &&
+      requestedOperation !== "stop")
   )
     return { status: "error", message: "Invalid project operation." };
   const operation = requestedOperation;
@@ -86,12 +88,18 @@ export async function setProjectServicesStateAction(
           )
         : projectServices;
     const services = resolvedServices.filter((service) =>
-      operation === "start"
-        ? service.status !== "running"
-        : service.status === "running",
+      operation === "deploy"
+        ? true
+        : operation === "start"
+          ? service.status !== "running"
+          : service.status === "running",
     );
     const results = await Promise.allSettled(
       services.map(async (service) => {
+        if (operation === "deploy") {
+          await deployDokployService(service.type, service.id);
+          return;
+        }
         if (operation === "stop") {
           await stopDokployService(service.type, service.id);
           return;
@@ -113,7 +121,19 @@ export async function setProjectServicesStateAction(
     if (failures.length > 0) {
       return {
         status: "error",
-        message: `${results.length - failures.length} of ${results.length} services ${operation === "start" ? "started" : "stopped"}.`,
+        message:
+          operation === "deploy"
+            ? `${results.length - failures.length} of ${results.length} service deployments started.`
+            : `${results.length - failures.length} of ${results.length} services ${operation === "start" ? "started" : "stopped"}.`,
+      };
+    }
+    if (operation === "deploy") {
+      return {
+        status: "success",
+        message:
+          services.length === 0
+            ? "The project has no services to deploy."
+            : "All service deployments started.",
       };
     }
     return {

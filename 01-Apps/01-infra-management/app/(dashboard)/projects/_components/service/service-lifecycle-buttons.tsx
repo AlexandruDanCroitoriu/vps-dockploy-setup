@@ -116,18 +116,15 @@ export function ServiceLifecycleButtons({
 
   if (compactMenu) {
     return (
-      <div className="flex shrink-0 items-center gap-0.5">
-        {deployButton}
-        <CompactServiceMenu
-          projectId={projectId}
-          serviceId={serviceId}
-          serviceName={serviceName}
-          appName={appName}
-          serviceType={serviceType}
-          status={status}
-          deleteRedirectHref={deleteRedirectHref}
-        />
-      </div>
+      <CompactServiceMenu
+        projectId={projectId}
+        serviceId={serviceId}
+        serviceName={serviceName}
+        appName={appName}
+        serviceType={serviceType}
+        status={status}
+        deleteRedirectHref={deleteRedirectHref}
+      />
     );
   }
 
@@ -257,6 +254,29 @@ function CompactServiceMenu({
           anchor="bottom end"
           className="z-50 mt-1 w-48 rounded-md border border-gray-200 bg-white p-1 text-sm shadow-xl outline-none dark:border-white/10 dark:bg-gray-900"
         >
+          <MenuItem>
+            <button
+              type="button"
+              disabled={pending || status === "deploying"}
+              onClick={() =>
+                runLifecycle(
+                  deployServiceAction.bind(
+                    null,
+                    projectId,
+                    serviceType,
+                    serviceId,
+                  ),
+                )
+              }
+              className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-gray-700 disabled:opacity-40 data-focus:bg-gray-100 dark:text-gray-300 dark:data-focus:bg-white/5"
+            >
+              <RocketLaunchIcon
+                className="size-4 text-indigo-500"
+                aria-hidden="true"
+              />
+              Deploy service
+            </button>
+          </MenuItem>
           <MenuItem>
             <button
               type="button"

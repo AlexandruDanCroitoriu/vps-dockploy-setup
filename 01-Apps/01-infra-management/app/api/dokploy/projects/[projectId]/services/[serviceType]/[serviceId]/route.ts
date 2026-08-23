@@ -1,7 +1,11 @@
 import { getServerSession } from "next-auth";
 
 import { authOptions } from "@/auth";
-import { getDokployProject, removeDokployService } from "@/lib/dokploy";
+import {
+  getActiveDokployInstanceSummary,
+  getDokployProject,
+  removeDokployService,
+} from "@/lib/dokploy";
 
 export async function DELETE(
   _request: Request,
@@ -18,6 +22,12 @@ export async function DELETE(
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await getActiveDokployInstanceSummary())) {
+    return Response.json(
+      { error: "No Dockploy instance is selected." },
+      { status: 409 },
+    );
   }
 
   const { projectId, serviceType, serviceId } = await params;

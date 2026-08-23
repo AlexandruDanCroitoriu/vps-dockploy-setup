@@ -1,20 +1,21 @@
 import "server-only";
 
 import { DokployApiError } from "./errors";
+import { getActiveDokployConfiguration } from "./active-instance";
 
-function getDokployConfiguration() {
-  const baseUrl = process.env.DOKPLOY_URL;
-  const apiKey = process.env.DOKPLOY_API_KEY;
-
-  if (!baseUrl || !apiKey) {
-    throw new Error("DOKPLOY_URL or DOKPLOY_API_KEY is not configured.");
+export class NoActiveDokployInstanceError extends Error {
+  constructor() {
+    super("No Dockploy instance is selected.");
+    this.name = "NoActiveDokployInstanceError";
   }
-
-  return { baseUrl: baseUrl.replace(/\/$/, ""), apiKey };
 }
 
-export async function dokployRequest(endpoint: string, init?: RequestInit) {
-  const { baseUrl, apiKey } = getDokployConfiguration();
+export async function dokployRequestWithConfiguration(
+  configuration: { baseUrl: string; apiKey: string },
+  endpoint: string,
+  init?: RequestInit,
+) {
+  const { baseUrl, apiKey } = configuration;
   const response = await fetch(`${baseUrl}/api/${endpoint}`, {
     ...init,
     headers: {
@@ -36,6 +37,23 @@ export async function dokployRequest(endpoint: string, init?: RequestInit) {
   }
 
   return response;
+}
+
+export async function dokployRequest(endpoint: string, init?: RequestInit) {
+  const instance = await getActiveDokployConfiguration();
+  if (!instance) throw new NoActiveDokployInstanceError();
+  return dokployRequestWithConfiguration(
+    { baseUrl: instance.rootUrl, apiKey: instance.apiKey },
+    endpoint,
+    init,
+  );
+}
+
+export async function verifyDokployConnection(configuration: {
+  baseUrl: string;
+  apiKey: string;
+}) {
+  await dokployRequestWithConfiguration(configuration, "project.all");
 }
 
 export async function dokployGet<T = unknown>(endpoint: string): Promise<T> {

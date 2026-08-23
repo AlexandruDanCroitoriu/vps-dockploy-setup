@@ -5,6 +5,7 @@ import { Bars3Icon, XMarkIcon } from "@heroicons/react/24/outline";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { PROJECTS_CHANGED_EVENT } from "@/lib/project-events";
+import type { DokployInstanceSummary } from "@/lib/storage/dokploy-instances";
 import { Sidebar } from "./sidebar";
 
 export type SidebarProject = {
@@ -17,11 +18,15 @@ export function DashboardShell({
   children,
   initialProjects,
   initialProjectsError,
+  instances,
+  activeInstanceId,
   userName,
 }: {
   children: React.ReactNode;
   initialProjects: SidebarProject[];
   initialProjectsError: string;
+  instances: DokployInstanceSummary[];
+  activeInstanceId: string | null;
   userName: string;
 }) {
   const pathname = usePathname();
@@ -77,6 +82,8 @@ export function DashboardShell({
             <Sidebar
               projects={projects}
               projectsError={projectsError}
+              instances={instances}
+              activeInstanceId={activeInstanceId}
               userName={userName}
               onNavigate={() => setSidebarOpen(false)}
             />
@@ -87,6 +94,8 @@ export function DashboardShell({
         <Sidebar
           projects={projects}
           projectsError={projectsError}
+          instances={instances}
+          activeInstanceId={activeInstanceId}
           userName={userName}
         />
       </div>

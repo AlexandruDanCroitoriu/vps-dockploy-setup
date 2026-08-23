@@ -10,9 +10,11 @@ import {
   type DokployDatabaseType,
 } from "@/lib/dokploy";
 import {
+  deployAfterCreateRequested,
   getActionError,
   requireAuthenticatedSession,
   SESSION_EXPIRED_STATE,
+  startInitialDeployment,
   type ActionState,
 } from "./shared";
 
@@ -37,6 +39,7 @@ export async function createDatabaseAction(
   const databaseName = formData.get("databaseName")?.toString().trim() ?? "";
   const databaseUser = formData.get("databaseUser")?.toString().trim() ?? "";
   const databasePassword = formData.get("databasePassword")?.toString() ?? "";
+  const deployAfterCreate = deployAfterCreateRequested(formData);
   const needsDatabaseName = ["postgres", "mysql", "mariadb"].includes(type);
   const needsUser = type !== "redis";
 
@@ -69,7 +72,7 @@ export async function createDatabaseAction(
     ) {
       return { status: "error", message: "Invalid project environment." };
     }
-    const credentials = await createDokployDatabase({
+    const { databaseId, credentials } = await createDokployDatabase({
       type,
       environmentId,
       name,
@@ -94,11 +97,33 @@ export async function createDatabaseAction(
       projectId,
       mergeDokployProjectEnv(project.env, entries),
     );
+    if (deployAfterCreate) {
+      if (!databaseId) {
+        revalidatePath("/projects");
+        revalidatePath(`/projects/${projectId}`);
+        return {
+          status: "error",
+          message:
+            "Database created and credentials saved, but Dokploy did not return its service ID for deployment.",
+        };
+      }
+      if (!(await startInitialDeployment(type, databaseId))) {
+        revalidatePath("/projects");
+        revalidatePath(`/projects/${projectId}`);
+        return {
+          status: "error",
+          message:
+            "Database created and credentials saved, but its first deployment could not be started.",
+        };
+      }
+    }
     revalidatePath("/projects");
     revalidatePath(`/projects/${projectId}`);
     return {
       status: "success",
-      message: "Database created and project credentials updated.",
+      message: deployAfterCreate
+        ? "Database created, credentials updated, and deployment started."
+        : "Database created and project credentials updated.",
     };
   } catch (error) {
     if (databaseCreated) {

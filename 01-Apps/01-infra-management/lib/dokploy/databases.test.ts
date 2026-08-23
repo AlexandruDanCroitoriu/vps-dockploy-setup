@@ -21,7 +21,7 @@ describe("database project credentials", () => {
       appName: "project-postgres-internal",
     });
 
-    const credentials = await createDokployDatabase({
+    const result = await createDokployDatabase({
       type: "postgres",
       environmentId: "environment-1",
       name: "postgres",
@@ -30,11 +30,12 @@ describe("database project credentials", () => {
       databasePassword: "app-password",
     });
 
-    expect(credentials).toContainEqual({
+    expect(result.databaseId).toBe("postgres-1");
+    expect(result.credentials).toContainEqual({
       label: "Internal Host",
       value: "project-postgres-internal",
     });
-    expect(credentials).toContainEqual({
+    expect(result.credentials).toContainEqual({
       label: "Internal Connection URL",
       value:
         "postgresql://app-user:app-password@project-postgres-internal:5432/app",

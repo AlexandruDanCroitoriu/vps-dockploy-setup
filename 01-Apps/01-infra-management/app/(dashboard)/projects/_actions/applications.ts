@@ -10,9 +10,11 @@ import {
   type DokployApplicationBuildType,
 } from "@/lib/dokploy";
 import {
+  deployAfterCreateRequested,
   getActionError,
   requireAuthenticatedSession,
   SESSION_EXPIRED_STATE,
+  startInitialDeployment,
   type ActionState,
 } from "./shared";
 
@@ -78,6 +80,7 @@ export async function createApplicationAction(
     .split(/[\r\n,]+/)
     .map((path) => path.trim())
     .filter(Boolean);
+  const deployAfterCreate = deployAfterCreateRequested(formData);
 
   if (
     !projectId ||
@@ -121,7 +124,7 @@ export async function createApplicationAction(
   }
 
   try {
-    await createDokployGithubApplication({
+    const applicationId = await createDokployGithubApplication({
       name,
       description,
       environmentId,
@@ -147,9 +150,25 @@ export async function createApplicationAction(
           }
         : {}),
     });
+    if (deployAfterCreate) {
+      if (!(await startInitialDeployment("applications", applicationId))) {
+        revalidatePath("/projects");
+        revalidatePath(`/projects/${projectId}`);
+        return {
+          status: "error",
+          message:
+            "The application was created, but its first deployment could not be started.",
+        };
+      }
+    }
     revalidatePath("/projects");
     revalidatePath(`/projects/${projectId}`);
-    return { status: "success", message: "Application created." };
+    return {
+      status: "success",
+      message: deployAfterCreate
+        ? "Application created and deployment started."
+        : "Application created.",
+    };
   } catch (error) {
     return getActionError(
       error,

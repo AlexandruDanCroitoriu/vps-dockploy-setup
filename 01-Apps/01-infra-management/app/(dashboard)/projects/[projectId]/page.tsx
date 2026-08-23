@@ -2,7 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
-import { getDokployGithubProviders, getDokployProject } from "@/lib/dokploy";
+import {
+  getActiveDokployConfiguration,
+  getDokployGithubProviders,
+  getDokployProject,
+} from "@/lib/dokploy";
 import { getRepositoryApplications } from "@/lib/github/repository-applications";
 
 import { ProjectCard } from "../_components/project/project-card";
@@ -26,11 +30,13 @@ async function ProjectContent({
   params: Promise<{ projectId: string }>;
 }) {
   const { projectId } = await params;
-  const [project, githubProviders, repositoryApplications] = await Promise.all([
-    getDokployProject(projectId),
-    getDokployGithubProviders().catch(() => []),
-    getRepositoryApplications().catch(() => []),
-  ]);
+  const [project, githubProviders, repositoryApplications, activeInstance] =
+    await Promise.all([
+      getDokployProject(projectId),
+      getDokployGithubProviders().catch(() => []),
+      getRepositoryApplications().catch(() => []),
+      getActiveDokployConfiguration(),
+    ]);
 
   if (!project) notFound();
 
@@ -53,6 +59,11 @@ async function ProjectContent({
           serviceActionsMenu
           githubProviders={githubProviders}
           repositoryApplications={repositoryApplications}
+          rootDomain={activeInstance?.rootDomain ?? ""}
+          defaultServiceCredentials={{
+            username: activeInstance?.defaultServiceUsername ?? "admin",
+            password: activeInstance?.defaultServicePassword ?? "admin",
+          }}
         />
       </div>
     </div>

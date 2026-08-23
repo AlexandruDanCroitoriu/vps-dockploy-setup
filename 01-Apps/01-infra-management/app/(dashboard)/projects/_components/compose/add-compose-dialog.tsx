@@ -6,6 +6,8 @@ import { useActionState, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { AppDialog } from "@/components/ui/dialog";
+import { DeployAfterCreateOption } from "@/components/ui/deploy-after-create-option";
+import { useClickOutside } from "@/components/ui/use-click-outside";
 import {
   ActionMessage,
   FormField,
@@ -26,6 +28,7 @@ type ComposeServiceOption = {
   automaticDomain: boolean;
   httpsByDefault: boolean;
   domainRequired: boolean;
+  defaultDomainSubdomain?: string;
   requiresLoginCredentials: boolean;
 };
 
@@ -33,14 +36,20 @@ export function AddComposeDialog({
   projectId,
   environmentId,
   definitions,
+  rootDomain,
+  defaultLoginCredentials,
 }: {
   projectId: string;
   environmentId?: string;
   definitions: ComposeServiceOption[];
+  rootDomain: string;
+  defaultLoginCredentials: { username: string; password: string };
 }) {
   const [isListOpen, setIsListOpen] = useState(false);
+  const listRef = useClickOutside<HTMLDivElement>(isListOpen, setIsListOpen);
   const [selectedDefinition, setSelectedDefinition] =
     useState<ComposeServiceOption | null>(null);
+  const [deployAfterCreate, setDeployAfterCreate] = useState(true);
   const action = createComposeAction.bind(null, projectId, environmentId ?? "");
   const [state, formAction, pending] = useActionState(action, initialState);
   const router = useRouter();
@@ -49,6 +58,7 @@ export function AddComposeDialog({
     if (state.status !== "success") return;
     queueMicrotask(() => {
       setSelectedDefinition(null);
+      setDeployAfterCreate(true);
       router.refresh();
       notifyProjectsChanged();
     });
@@ -60,7 +70,7 @@ export function AddComposeDialog({
 
   return (
     <>
-      <div className="relative">
+      <div ref={listRef} className="relative">
         <button
           type="button"
           onClick={() => setIsListOpen((open) => !open)}
@@ -90,6 +100,7 @@ export function AddComposeDialog({
                       type="button"
                       onClick={() => {
                         setSelectedDefinition(definition);
+                        setDeployAfterCreate(true);
                         setIsListOpen(false);
                       }}
                       className="flex w-full items-start gap-2.5 px-3 py-2 text-left hover:bg-indigo-50 dark:hover:bg-indigo-500/10"
@@ -165,7 +176,7 @@ export function AddComposeDialog({
                     type="text"
                     required
                     autoComplete="username"
-                    defaultValue="admin"
+                    defaultValue={defaultLoginCredentials.username}
                     className={inputClassName}
                   />
                 </FormField>
@@ -173,9 +184,12 @@ export function AddComposeDialog({
                   <input
                     id="dbgate-password"
                     name="loginPassword"
-                    type="password"
+                    type="text"
                     required
-                    autoComplete="new-password"
+                    autoComplete="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    defaultValue={defaultLoginCredentials.password}
                     className={inputClassName}
                   />
                 </FormField>
@@ -195,6 +209,11 @@ export function AddComposeDialog({
                     required={selectedDefinition.domainRequired}
                     autoComplete="off"
                     placeholder="dbgate.example.com"
+                    defaultValue={
+                      selectedDefinition.defaultDomainSubdomain && rootDomain
+                        ? `${selectedDefinition.defaultDomainSubdomain}.${rootDomain}`
+                        : ""
+                    }
                     className={inputClassName}
                   />
                 </FormField>
@@ -212,9 +231,15 @@ export function AddComposeDialog({
                 )}
               </div>
             )}
+            <DeployAfterCreateOption
+              checked={deployAfterCreate}
+              onChange={(event) => setDeployAfterCreate(event.target.checked)}
+              description="Start the first deployment as soon as the service is created."
+            />
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              The service is created without deploying. Review it, then use its
-              Deploy button.
+              {deployAfterCreate
+                ? "The service will be created and its first deployment started."
+                : "The service is created without deploying. Review it, then use its Deploy button."}
             </p>
           </form>
         </AppDialog>

@@ -23,6 +23,10 @@
 # production
 /build
 
+# local SQLite data and sidecar files
+/data/*.sqlite
+/data/*.sqlite-*
+
 # misc
 .DS_Store
 *.pem

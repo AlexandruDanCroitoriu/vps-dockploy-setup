@@ -38,6 +38,7 @@ describe("DBGate Compose definition", () => {
     expect(dbGateService.composeFile).toContain('expose:\n      - "3000"');
     expect(dbGateService.domain).toMatchObject({
       serviceName: "dbgate",
+      defaultSubdomain: "dbgate",
       port: 3000,
     });
     expect(dbGateService.environmentTarget).toBe("project");

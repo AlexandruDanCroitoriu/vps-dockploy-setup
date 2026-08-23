@@ -29,6 +29,8 @@ export function ProjectCard({
   serviceActionsMenu = false,
   githubProviders,
   repositoryApplications,
+  rootDomain,
+  defaultServiceCredentials,
 }: {
   project: DokployProject;
   editableName?: boolean;
@@ -36,6 +38,8 @@ export function ProjectCard({
   serviceActionsMenu?: boolean;
   githubProviders?: DokployGithubProvider[];
   repositoryApplications?: RepositoryApplication[];
+  rootDomain: string;
+  defaultServiceCredentials: { username: string; password: string };
 }) {
   const services = project.environments.flatMap((environment) =>
     environment.services.map((service) => ({
@@ -106,6 +110,8 @@ export function ProjectCard({
               projectId={project.projectId}
               environmentId={project.environments[0]?.environmentId}
               definitions={composeServiceOptions}
+              rootDomain={rootDomain}
+              defaultLoginCredentials={defaultServiceCredentials}
             />
             <EnvironmentVariableEditor
               target="project"

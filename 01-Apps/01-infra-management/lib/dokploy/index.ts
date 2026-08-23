@@ -10,3 +10,8 @@ export * from "./projects";
 export * from "./services";
 export * from "./types";
 export * from "./validators";
+export * from "./active-instance";
+export {
+  NoActiveDokployInstanceError,
+  verifyDokployConnection,
+} from "./client";

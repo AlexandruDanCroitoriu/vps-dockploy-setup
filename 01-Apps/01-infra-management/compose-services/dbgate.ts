@@ -122,6 +122,7 @@ networks:
   requiresLoginCredentials: true,
   domain: {
     serviceName: "dbgate",
+    defaultSubdomain: "dbgate",
     port: 3000,
     httpsByDefault: true,
     required: true,
