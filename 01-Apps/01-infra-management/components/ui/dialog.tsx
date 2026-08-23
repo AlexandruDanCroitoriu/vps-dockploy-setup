@@ -11,6 +11,7 @@ import { XMarkIcon } from "@heroicons/react/24/outline";
 
 const widths = {
   sm: "max-w-md",
+  compact: "max-w-xl",
   md: "max-w-2xl",
   lg: "max-w-5xl",
   xl: "max-w-6xl",
@@ -45,6 +46,7 @@ export function AppDialog({
         <div className="flex min-h-full items-center justify-center">
           <DialogPanel
             transition
+            style={width === "compact" ? { maxWidth: "36rem" } : undefined}
             className={`w-full ${widths[width]} overflow-hidden rounded-xl bg-white text-left shadow-2xl transition duration-200 data-closed:scale-95 data-closed:opacity-0 dark:bg-gray-900 dark:ring-1 dark:ring-white/10`}
           >
             <div className="flex items-start gap-4 border-b border-gray-200 px-5 py-4 sm:px-6 dark:border-white/10">

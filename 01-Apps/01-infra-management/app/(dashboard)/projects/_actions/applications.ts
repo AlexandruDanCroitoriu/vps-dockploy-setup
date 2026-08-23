@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import {
   createDokployGithubApplication,
   DOKPLOY_APPLICATION_BUILD_TYPES,
+  generateDokployDomain,
   isValidHostname,
   isValidPort,
   type DokployApplicationBuildType,
@@ -21,6 +22,34 @@ const REPOSITORY_PART_PATTERN = /^[a-zA-Z0-9._-]+$/;
 
 function field(formData: FormData, name: string) {
   return formData.get(name)?.toString().trim() ?? "";
+}
+
+export async function generateApplicationDomainAction(applicationName: string) {
+  if (!(await requireAuthenticatedSession())) {
+    return { status: "error" as const, message: SESSION_EXPIRED_STATE.message };
+  }
+
+  const name = applicationName.trim();
+  if (!APP_NAME_PATTERN.test(name) || name.length > 63) {
+    return {
+      status: "error" as const,
+      message: "Enter a valid application name.",
+    };
+  }
+
+  try {
+    return {
+      status: "success" as const,
+      domain: await generateDokployDomain(name),
+    };
+  } catch (error) {
+    const state = getActionError(
+      error,
+      "Unable to generate a domain.",
+      "domain generation",
+    );
+    return { status: "error" as const, message: state.message };
+  }
 }
 
 export async function createApplicationAction(

@@ -5,15 +5,17 @@ export function FormField({
   label,
   htmlFor,
   optional,
+  className = "",
   children,
 }: {
   label: string;
   htmlFor?: string;
   optional?: boolean;
+  className?: string;
   children: React.ReactNode;
 }) {
   return (
-    <div>
+    <div className={className}>
       <label
         htmlFor={htmlFor}
         className="block text-xs font-medium text-gray-700 dark:text-gray-300"

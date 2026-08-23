@@ -2,7 +2,7 @@
 
 import { CodeBracketIcon, FolderIcon } from "@heroicons/react/24/outline";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import { AppDialog } from "@/components/ui/dialog";
@@ -18,7 +18,10 @@ import type {
 import type { RepositoryApplication } from "@/lib/github/repository-applications";
 import { notifyProjectsChanged } from "@/lib/project-events";
 
-import { createApplicationAction } from "../../_actions/applications";
+import {
+  createApplicationAction,
+  generateApplicationDomainAction,
+} from "../../_actions/applications";
 import type { ActionState } from "../../_actions/shared";
 
 const initialState: ActionState = { status: "idle", message: "" };
@@ -66,6 +69,10 @@ export function AddApplicationDialog({
   const [buildPath, setBuildPath] = useState("/01-Apps/");
   const [watchPaths, setWatchPaths] = useState("01-Apps/**");
   const [watchPathsEdited, setWatchPathsEdited] = useState(false);
+  const [applicationName, setApplicationName] = useState("");
+  const [domainHost, setDomainHost] = useState("");
+  const [domainGenerationError, setDomainGenerationError] = useState("");
+  const [domainGenerationPending, startDomainGeneration] = useTransition();
   const action = createApplicationAction.bind(null, projectId);
   const [state, formAction, pending] = useActionState(action, initialState);
   const router = useRouter();
@@ -98,17 +105,35 @@ export function AddApplicationDialog({
   function selectApplication(application: RepositoryApplication) {
     const path = normalizeBuildPath(application.path);
     setSelectedApplication(application);
+    setBuildType("nixpacks");
     setBuildPath(path);
     setWatchPaths(watchPathFor(path));
     setWatchPathsEdited(false);
+    setApplicationName(application.name);
+    setDomainHost("");
+    setDomainGenerationError("");
     setIsListOpen(false);
     setIsOpen(true);
+  }
+
+  function generateDomain() {
+    setDomainGenerationError("");
+    startDomainGeneration(async () => {
+      const result = await generateApplicationDomainAction(applicationName);
+      if (result.status === "error") {
+        setDomainGenerationError(result.message);
+        return;
+      }
+      setDomainHost(result.domain);
+    });
   }
 
   const unavailableReason =
     environments.length === 0
       ? "Create a project environment before adding an application"
       : "Add application";
+  const usesInfraManagementDefaults =
+    selectedApplication?.name.toLowerCase() === "01-infra-management";
 
   return (
     <>
@@ -184,8 +209,12 @@ export function AddApplicationDialog({
           open
           onClose={() => setIsOpen(false)}
           title={`Deploy ${selectedApplication.name}`}
-          description="Create the service and configure its source and build settings."
-          width="lg"
+          description={
+            usesInfraManagementDefaults
+              ? "Create the service with the repository defaults and configure its domain."
+              : "Create the service and configure its source and build settings."
+          }
+          width={usesInfraManagementDefaults ? "compact" : "lg"}
           footer={
             <div className="flex justify-end gap-2">
               <Button
@@ -210,7 +239,11 @@ export function AddApplicationDialog({
           <form
             id="create-application-form"
             action={formAction}
-            className="grid gap-4 px-5 py-4 sm:grid-cols-2"
+            className={
+              usesInfraManagementDefaults
+                ? "flex flex-col gap-4 px-5 py-4"
+                : "grid gap-4 px-5 py-4 sm:grid-cols-2"
+            }
           >
             <div className="sm:col-span-2">
               <ActionMessage status={state.status} message={state.message} />
@@ -253,186 +286,274 @@ export function AddApplicationDialog({
               </FormField>
             )}
 
-            <FormField label="Application name" htmlFor="app-name">
-              <input
-                id="app-name"
-                name="name"
-                required
-                maxLength={63}
-                pattern="[a-zA-Z0-9._-]+"
-                defaultValue={selectedApplication.name}
-                className={inputClassName}
-              />
-            </FormField>
-
-            {githubProviders.length > 0 ? (
-              <FormField label="GitHub connection" htmlFor="app-github">
-                <select
-                  id="app-github"
+            {usesInfraManagementDefaults ? (
+              <>
+                <input type="hidden" name="name" value={applicationName} />
+                <input
+                  type="hidden"
                   name="githubId"
-                  required
-                  className={inputClassName}
-                >
-                  {githubProviders.map((provider) => (
-                    <option key={provider.githubId} value={provider.githubId}>
-                      {provider.name}
-                    </option>
-                  ))}
-                </select>
-              </FormField>
+                  value={githubProviders[0]?.githubId ?? ""}
+                />
+                <input
+                  type="hidden"
+                  name="branch"
+                  value={selectedApplication.branch}
+                />
+                <input type="hidden" name="buildType" value="nixpacks" />
+                <input type="hidden" name="buildPath" value={buildPath} />
+                <input type="hidden" name="watchPaths" value={watchPaths} />
+              </>
             ) : (
-              <div className="rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:bg-white/5 dark:text-gray-300">
-                Public Git source
-                <span className="mt-0.5 block text-gray-500 dark:text-gray-400">
-                  No Dokploy GitHub provider is configured, so the public HTTPS
-                  repository URL will be used.
-                </span>
-              </div>
-            )}
-
-            <FormField label="Branch" htmlFor="app-branch">
-              <input
-                id="app-branch"
-                name="branch"
-                required
-                defaultValue={selectedApplication.branch}
-                className={inputClassName}
-              />
-            </FormField>
-
-            <FormField label="Build type" htmlFor="app-build-type">
-              <select
-                id="app-build-type"
-                name="buildType"
-                value={buildType}
-                onChange={(event) =>
-                  setBuildType(
-                    event.target.value as DokployApplicationBuildType,
-                  )
-                }
-                className={inputClassName}
-              >
-                {buildTypes.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </FormField>
-
-            <FormField label="Build path" htmlFor="app-build-path">
-              <input
-                id="app-build-path"
-                name="buildPath"
-                required
-                value={buildPath}
-                onChange={(event) => updateBuildPath(event.target.value)}
-                onBlur={() => updateBuildPath(normalizeBuildPath(buildPath))}
-                placeholder="/01-Apps/02-personal-site"
-                className={inputClassName}
-              />
-            </FormField>
-
-            <FormField label="Watch paths" htmlFor="app-watch-paths" optional>
-              <textarea
-                id="app-watch-paths"
-                name="watchPaths"
-                value={watchPaths}
-                onChange={(event) => {
-                  setWatchPathsEdited(true);
-                  setWatchPaths(event.target.value);
-                }}
-                rows={2}
-                placeholder="01-Apps/02-personal-site/**"
-                className={`${inputClassName} resize-y`}
-              />
-            </FormField>
-
-            {buildType === "dockerfile" && (
               <>
-                <FormField label="Dockerfile" htmlFor="app-dockerfile">
+                <FormField label="Application name" htmlFor="app-name">
                   <input
-                    id="app-dockerfile"
-                    name="dockerfile"
-                    defaultValue="Dockerfile"
+                    id="app-name"
+                    name="name"
+                    required
+                    maxLength={63}
+                    pattern="[a-zA-Z0-9._-]+"
+                    value={applicationName}
+                    onChange={(event) => setApplicationName(event.target.value)}
                     className={inputClassName}
                   />
                 </FormField>
-                <FormField label="Docker context" htmlFor="app-docker-context">
+
+                {githubProviders.length > 0 ? (
+                  <FormField label="GitHub connection" htmlFor="app-github">
+                    <select
+                      id="app-github"
+                      name="githubId"
+                      required
+                      className={inputClassName}
+                    >
+                      {githubProviders.map((provider) => (
+                        <option
+                          key={provider.githubId}
+                          value={provider.githubId}
+                        >
+                          {provider.name}
+                        </option>
+                      ))}
+                    </select>
+                  </FormField>
+                ) : (
+                  <div className="rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:bg-white/5 dark:text-gray-300">
+                    Public Git source
+                    <span className="mt-0.5 block text-gray-500 dark:text-gray-400">
+                      No Dokploy GitHub provider is configured, so the public
+                      HTTPS repository URL will be used.
+                    </span>
+                  </div>
+                )}
+
+                <FormField label="Branch" htmlFor="app-branch">
                   <input
-                    id="app-docker-context"
-                    name="dockerContextPath"
-                    defaultValue="."
+                    id="app-branch"
+                    name="branch"
+                    required
+                    defaultValue={selectedApplication.branch}
                     className={inputClassName}
                   />
                 </FormField>
-              </>
-            )}
 
-            {buildType === "static" && (
-              <>
+                <FormField label="Build type" htmlFor="app-build-type">
+                  <select
+                    id="app-build-type"
+                    name="buildType"
+                    value={buildType}
+                    onChange={(event) =>
+                      setBuildType(
+                        event.target.value as DokployApplicationBuildType,
+                      )
+                    }
+                    className={inputClassName}
+                  >
+                    {buildTypes.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+
+                <FormField label="Build path" htmlFor="app-build-path">
+                  <input
+                    id="app-build-path"
+                    name="buildPath"
+                    required
+                    value={buildPath}
+                    onChange={(event) => updateBuildPath(event.target.value)}
+                    onBlur={() =>
+                      updateBuildPath(normalizeBuildPath(buildPath))
+                    }
+                    placeholder="/01-Apps/02-personal-site"
+                    className={inputClassName}
+                  />
+                </FormField>
+
                 <FormField
-                  label="Publish directory"
-                  htmlFor="app-publish-directory"
+                  label="Watch paths"
+                  htmlFor="app-watch-paths"
+                  optional
                 >
-                  <input
-                    id="app-publish-directory"
-                    name="publishDirectory"
-                    defaultValue="dist"
-                    className={inputClassName}
+                  <textarea
+                    id="app-watch-paths"
+                    name="watchPaths"
+                    value={watchPaths}
+                    onChange={(event) => {
+                      setWatchPathsEdited(true);
+                      setWatchPaths(event.target.value);
+                    }}
+                    rows={2}
+                    placeholder="01-Apps/02-personal-site/**"
+                    className={`${inputClassName} resize-y`}
                   />
                 </FormField>
-                <label className="mt-6 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-                  <input type="checkbox" name="isStaticSpa" defaultChecked />
-                  Single-page application fallback
-                </label>
+
+                {buildType === "dockerfile" && (
+                  <>
+                    <FormField label="Dockerfile" htmlFor="app-dockerfile">
+                      <input
+                        id="app-dockerfile"
+                        name="dockerfile"
+                        defaultValue="Dockerfile"
+                        className={inputClassName}
+                      />
+                    </FormField>
+                    <FormField
+                      label="Docker context"
+                      htmlFor="app-docker-context"
+                    >
+                      <input
+                        id="app-docker-context"
+                        name="dockerContextPath"
+                        defaultValue="."
+                        className={inputClassName}
+                      />
+                    </FormField>
+                  </>
+                )}
+
+                {buildType === "static" && (
+                  <>
+                    <FormField
+                      label="Publish directory"
+                      htmlFor="app-publish-directory"
+                    >
+                      <input
+                        id="app-publish-directory"
+                        name="publishDirectory"
+                        defaultValue="dist"
+                        className={inputClassName}
+                      />
+                    </FormField>
+                    <label className="mt-6 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                      <input
+                        type="checkbox"
+                        name="isStaticSpa"
+                        defaultChecked
+                      />
+                      Single-page application fallback
+                    </label>
+                  </>
+                )}
               </>
             )}
 
-            <FormField label="Domain hostname" htmlFor="app-host" optional>
-              <input
-                id="app-host"
-                name="host"
-                type="text"
-                placeholder="app.example.com"
-                className={inputClassName}
-              />
+            <FormField
+              label="Domain hostname"
+              htmlFor="app-host"
+              optional
+              className="col-span-full"
+            >
+              <div className="mt-1.5 grid w-full grid-cols-[minmax(0,1fr)_auto] gap-2">
+                <input
+                  id="app-host"
+                  name="host"
+                  type="text"
+                  value={domainHost}
+                  onChange={(event) => {
+                    setDomainHost(event.target.value);
+                    setDomainGenerationError("");
+                  }}
+                  placeholder="app.example.com"
+                  className={`${inputClassName} !mt-0 min-w-0`}
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={domainGenerationPending || !applicationName.trim()}
+                  onClick={generateDomain}
+                  className="h-full shrink-0"
+                >
+                  {domainGenerationPending ? "Generating…" : "Generate"}
+                </Button>
+              </div>
+              {domainGenerationError && (
+                <p
+                  className="mt-1 text-xs text-red-600 dark:text-red-400"
+                  role="alert"
+                >
+                  {domainGenerationError}
+                </p>
+              )}
             </FormField>
 
-            <FormField label="Container port" htmlFor="app-port">
-              <input
-                id="app-port"
-                name="port"
-                type="number"
-                min={1}
-                max={65535}
-                defaultValue={3000}
-                className={inputClassName}
-              />
-            </FormField>
-
-            <label className="flex items-center gap-2 text-sm text-gray-700 sm:col-span-2 dark:text-gray-300">
-              <input type="checkbox" name="https" defaultChecked />
-              Enable HTTPS with a Let’s Encrypt certificate
-            </label>
-
-            <div className="sm:col-span-2">
-              <FormField label="Description" htmlFor="app-description" optional>
-                <textarea
-                  id="app-description"
-                  name="description"
-                  maxLength={1000}
-                  rows={2}
-                  className={`${inputClassName} resize-y`}
+            {usesInfraManagementDefaults ? (
+              <input type="hidden" name="port" value="3000" />
+            ) : (
+              <FormField label="Container port" htmlFor="app-port">
+                <input
+                  id="app-port"
+                  name="port"
+                  type="number"
+                  min={1}
+                  max={65535}
+                  defaultValue={3000}
+                  className={inputClassName}
                 />
               </FormField>
-              <label className="mt-4 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-                <input type="checkbox" name="autoDeploy" defaultChecked />
-                Automatically deploy pushes to this branch
+            )}
+
+            {usesInfraManagementDefaults ? (
+              <input type="hidden" name="https" value="on" />
+            ) : (
+              <label className="flex items-center gap-2 text-sm text-gray-700 sm:col-span-2 dark:text-gray-300">
+                <input type="checkbox" name="https" defaultChecked />
+                Enable HTTPS with a Let’s Encrypt certificate
               </label>
+            )}
+
+            <div className="sm:col-span-2">
+              {usesInfraManagementDefaults ? (
+                <input type="hidden" name="description" value="" />
+              ) : (
+                <FormField
+                  label="Description"
+                  htmlFor="app-description"
+                  optional
+                >
+                  <textarea
+                    id="app-description"
+                    name="description"
+                    maxLength={1000}
+                    rows={2}
+                    className={`${inputClassName} resize-y`}
+                  />
+                </FormField>
+              )}
+              {usesInfraManagementDefaults ? (
+                <input type="hidden" name="autoDeploy" value="on" />
+              ) : (
+                <label className="mt-4 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <input type="checkbox" name="autoDeploy" defaultChecked />
+                  Automatically deploy pushes to this branch
+                </label>
+              )}
               <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                The port is used when a domain hostname is provided. You can
-                also add or change domains after creation.
+                {usesInfraManagementDefaults
+                  ? "The domain targets the application on port 3000. You can also change domains after creation."
+                  : "The port is used when a domain hostname is provided. You can also add or change domains after creation."}
               </p>
             </div>
           </form>
