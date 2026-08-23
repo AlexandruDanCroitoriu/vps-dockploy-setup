@@ -34,11 +34,10 @@ Existing deployments may temporarily keep `DOKPLOY_URL`, `DOKPLOY_API_KEY`, and
 optional `DOKPLOY_NAME`. If the database is empty, the application imports them
 once. The imported instance must then be selected from the sidebar.
 
-The application dropdown reads folders from GitHub. Its repository defaults to
-this monorepo and can be changed with `GITHUB_REPOSITORY_OWNER`,
-`GITHUB_REPOSITORY_NAME`, `GITHUB_REPOSITORY_BRANCH`, and `GITHUB_APPS_PATH`.
-Set the server-only `GITHUB_TOKEN` when the repository is private; it only needs
-read access to repository contents.
+The application dropdown reads folders from `01-Apps` on the `main` branch of
+the `AlexandruDanCroitoriu/vps-dockploy-setup` GitHub repository. Set the
+server-only `GITHUB_TOKEN` when the repository is private; it only needs read
+access to repository contents.
 
 Generate an escaped password hash for a Next.js environment file:
 

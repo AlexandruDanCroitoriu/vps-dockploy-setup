@@ -158,6 +158,7 @@ export async function createApplicationAction(
           status: "error",
           message:
             "The application was created, but its first deployment could not be started.",
+          createdService: { id: applicationId, type: "applications" },
         };
       }
     }
@@ -168,6 +169,7 @@ export async function createApplicationAction(
       message: deployAfterCreate
         ? "Application created and deployment started."
         : "Application created.",
+      createdService: { id: applicationId, type: "applications" },
     };
   } catch (error) {
     return getActionError(

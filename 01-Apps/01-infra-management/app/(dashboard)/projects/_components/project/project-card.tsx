@@ -21,6 +21,7 @@ import { EnvironmentVariableEditor } from "../environment/environment-variable-e
 import { ProjectNameEditor } from "./project-name-editor";
 import { ProjectSettingsMenu } from "./project-settings-menu";
 import { getServiceDisplayName, ServiceCard } from "../service/service-card";
+import { OptimisticProjectServices } from "../service/optimistic-project-services";
 
 export function ProjectCard({
   project,
@@ -131,31 +132,35 @@ export function ProjectCard({
           </div>
         </div>
 
-        {serviceCount === 0 ? (
-          <p className="mt-3 rounded-md bg-gray-50 p-3 text-xs text-gray-500 dark:bg-white/[0.04] dark:text-gray-400">
-            No services in this project.
-          </p>
-        ) : (
-          <Suspense
-            fallback={
-              <ul className="mt-3 grid gap-2">
-                {services.map(({ environmentId, service }) => (
-                  <ServiceCardLoading
-                    key={`${environmentId}-${service.type}-${service.id}`}
-                    service={service}
-                  />
-                ))}
-              </ul>
-            }
-          >
-            <ProjectServices
-              services={services.map(({ service }) => service)}
-              projectId={project.projectId}
-              linkServices={linkServices}
-              serviceActionsMenu={serviceActionsMenu}
-            />
-          </Suspense>
-        )}
+        <OptimisticProjectServices
+          projectId={project.projectId}
+          existingServices={services.map(({ service }) => ({
+            id: service.id,
+            name: service.name,
+          }))}
+        >
+          {serviceCount > 0 && (
+            <Suspense
+              fallback={
+                <ul className="mt-3 grid gap-2">
+                  {services.map(({ environmentId, service }) => (
+                    <ServiceCardLoading
+                      key={`${environmentId}-${service.type}-${service.id}`}
+                      service={service}
+                    />
+                  ))}
+                </ul>
+              }
+            >
+              <ProjectServices
+                services={services.map(({ service }) => service)}
+                projectId={project.projectId}
+                linkServices={linkServices}
+                serviceActionsMenu={serviceActionsMenu}
+              />
+            </Suspense>
+          )}
+        </OptimisticProjectServices>
       </div>
     </article>
   );

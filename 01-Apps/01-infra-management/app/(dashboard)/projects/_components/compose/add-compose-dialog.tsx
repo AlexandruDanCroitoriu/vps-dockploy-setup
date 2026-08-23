@@ -2,7 +2,7 @@
 
 import { QueueListIcon } from "@heroicons/react/24/outline";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useState } from "react";
+import { type FormEvent, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { AppDialog } from "@/components/ui/dialog";
@@ -13,9 +13,12 @@ import {
   FormField,
   inputClassName,
 } from "@/components/ui/form-field";
-import { notifyProjectsChanged } from "@/lib/project-events";
+import {
+  notifyProjectsChanged,
+  notifyProjectServiceCreation,
+  submitProjectServiceCreation,
+} from "@/lib/project-events";
 
-import { createComposeAction } from "../../_actions/composes";
 import type { ActionState } from "../../_actions/shared";
 
 const initialState: ActionState = { status: "idle", message: "" };
@@ -49,20 +52,65 @@ export function AddComposeDialog({
   const listRef = useClickOutside<HTMLDivElement>(isListOpen, setIsListOpen);
   const [selectedDefinition, setSelectedDefinition] =
     useState<ComposeServiceOption | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
   const [deployAfterCreate, setDeployAfterCreate] = useState(true);
-  const action = createComposeAction.bind(null, projectId, environmentId ?? "");
-  const [state, formAction, pending] = useActionState(action, initialState);
+  const [state, setState] = useState(initialState);
+  const latestRequestIdRef = useRef("");
   const router = useRouter();
 
-  useEffect(() => {
-    if (state.status !== "success") return;
-    queueMicrotask(() => {
-      setSelectedDefinition(null);
-      setDeployAfterCreate(true);
-      router.refresh();
-      notifyProjectsChanged();
+  async function submitCompose(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedDefinition) return;
+    const requestId = crypto.randomUUID();
+    latestRequestIdRef.current = requestId;
+    const formData = new FormData(event.currentTarget);
+    formData.set("environmentId", environmentId ?? "");
+    notifyProjectServiceCreation({
+      phase: "started",
+      service: {
+        requestId,
+        projectId,
+        matchName: selectedDefinition.name,
+        displayName: selectedDefinition.name,
+        typeLabel: "Compose",
+      },
     });
-  }, [router, state.status]);
+    setIsOpen(false);
+    const result = await submitProjectServiceCreation(
+      projectId,
+      "compose",
+      formData,
+    );
+    if (latestRequestIdRef.current === requestId) {
+      setState({ status: result.status, message: result.message });
+    }
+    if (result.status === "error") {
+      if (result.createdService?.id) {
+        notifyProjectServiceCreation({
+          phase: "completed",
+          projectId,
+          requestId,
+          serviceId: result.createdService.id,
+        });
+        router.refresh();
+        notifyProjectsChanged();
+      } else {
+        notifyProjectServiceCreation({ phase: "failed", projectId, requestId });
+      }
+      if (latestRequestIdRef.current === requestId) setIsOpen(true);
+      return;
+    }
+    if (result.createdService?.id) {
+      notifyProjectServiceCreation({
+        phase: "completed",
+        projectId,
+        requestId,
+        serviceId: result.createdService.id,
+      });
+    }
+    router.refresh();
+    notifyProjectsChanged();
+  }
 
   const unavailableReason = environmentId
     ? "Add Compose service"
@@ -100,6 +148,7 @@ export function AddComposeDialog({
                       type="button"
                       onClick={() => {
                         setSelectedDefinition(definition);
+                        setIsOpen(true);
                         setDeployAfterCreate(true);
                         setIsListOpen(false);
                       }}
@@ -126,17 +175,17 @@ export function AddComposeDialog({
         )}
       </div>
 
-      {selectedDefinition && (
+      {selectedDefinition && isOpen && (
         <AppDialog
           open
-          onClose={() => setSelectedDefinition(null)}
+          onClose={() => setIsOpen(false)}
           title={`Add ${selectedDefinition.name}`}
           description={selectedDefinition.description}
           footer={
             <div className="flex justify-end gap-2">
               <Button
                 type="button"
-                onClick={() => setSelectedDefinition(null)}
+                onClick={() => setIsOpen(false)}
                 variant="secondary"
                 size="xs"
               >
@@ -145,17 +194,16 @@ export function AddComposeDialog({
               <Button
                 type="submit"
                 form="create-compose-form"
-                disabled={pending}
                 size="xs"
               >
-                {pending ? "Creating…" : "Create service"}
+                Create service
               </Button>
             </div>
           }
         >
           <form
             id="create-compose-form"
-            action={formAction}
+            onSubmit={submitCompose}
             className="space-y-3 p-4 sm:p-6"
           >
             <input

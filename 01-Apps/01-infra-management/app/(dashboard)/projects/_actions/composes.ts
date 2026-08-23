@@ -139,6 +139,7 @@ export async function createComposeAction(
           status: "error",
           message:
             "The Compose service was created, but its first deployment could not be started.",
+          createdService: { id: composeId, type: "compose" },
         };
       }
     }
@@ -149,6 +150,7 @@ export async function createComposeAction(
       message: deployAfterCreate
         ? "Compose service created and deployment started."
         : "Compose service created.",
+      createdService: { id: composeId, type: "compose" },
     };
   } catch (error) {
     return getActionError(

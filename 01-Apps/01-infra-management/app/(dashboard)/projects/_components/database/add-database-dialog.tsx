@@ -3,8 +3,12 @@
 import { ArrowLeftIcon, CircleStackIcon } from "@heroicons/react/24/outline";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { useActionState, useEffect, useState } from "react";
-import { notifyProjectsChanged } from "@/lib/project-events";
+import { type FormEvent, useRef, useState } from "react";
+import {
+  notifyProjectsChanged,
+  notifyProjectServiceCreation,
+  submitProjectServiceCreation,
+} from "@/lib/project-events";
 
 import type { DokployDatabaseType } from "@/lib/dokploy";
 import { AppDialog } from "@/components/ui/dialog";
@@ -12,7 +16,6 @@ import { DeployAfterCreateOption } from "@/components/ui/deploy-after-create-opt
 import { useClickOutside } from "@/components/ui/use-click-outside";
 import { FormField, inputClassName } from "@/components/ui/form-field";
 
-import { createDatabaseAction } from "../../_actions/databases";
 import type { ActionState } from "../../_actions/shared";
 
 const initialState: ActionState = { status: "idle", message: "" };
@@ -87,8 +90,8 @@ export function AddDatabaseDialog({
   const [databaseName, setDatabaseName] = useState("");
   const [databaseUser, setDatabaseUser] = useState("");
   const [password, setPassword] = useState("");
-  const action = createDatabaseAction.bind(null, projectId);
-  const [state, formAction, pending] = useActionState(action, initialState);
+  const [state, setState] = useState(initialState);
+  const latestRequestIdRef = useRef("");
   const router = useRouter();
   const needsDatabaseName =
     type !== null && ["postgres", "mysql", "mariadb"].includes(type);
@@ -97,15 +100,57 @@ export function AddDatabaseDialog({
     (option) => option.value === type,
   );
 
-  useEffect(() => {
-    if (state.status !== "success") return;
-
-    queueMicrotask(() => {
-      setIsOpen(false);
-      router.refresh();
-      notifyProjectsChanged();
+  async function submitDatabase(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const requestId = crypto.randomUUID();
+    latestRequestIdRef.current = requestId;
+    const formData = new FormData(event.currentTarget);
+    notifyProjectServiceCreation({
+      phase: "started",
+      service: {
+        requestId,
+        projectId,
+        matchName: name,
+        displayName: selectedOption?.label ?? name,
+        typeLabel: selectedOption?.label ?? "Database",
+      },
     });
-  }, [router, state]);
+    setIsOpen(false);
+    const result = await submitProjectServiceCreation(
+      projectId,
+      "database",
+      formData,
+    );
+    if (latestRequestIdRef.current === requestId) {
+      setState({ status: result.status, message: result.message });
+    }
+    if (result.status === "error") {
+      if (result.createdService?.id) {
+        notifyProjectServiceCreation({
+          phase: "completed",
+          projectId,
+          requestId,
+          serviceId: result.createdService.id,
+        });
+        router.refresh();
+        notifyProjectsChanged();
+      } else {
+        notifyProjectServiceCreation({ phase: "failed", projectId, requestId });
+      }
+      if (latestRequestIdRef.current === requestId) setIsOpen(true);
+      return;
+    }
+    if (result.createdService?.id) {
+      notifyProjectServiceCreation({
+        phase: "completed",
+        projectId,
+        requestId,
+        serviceId: result.createdService.id,
+      });
+    }
+    router.refresh();
+    notifyProjectsChanged();
+  }
 
   function openDialog() {
     setIsListOpen((open) => !open);
@@ -199,7 +244,7 @@ export function AddDatabaseDialog({
             </button>
           }
         >
-          <form action={formAction}>
+          <form onSubmit={submitDatabase}>
             <>
               <input type="hidden" name="type" value={type} />
               <div className="grid gap-3 px-5 py-4 sm:grid-cols-2">
@@ -301,10 +346,9 @@ export function AddDatabaseDialog({
                 </button>
                 <button
                   type="submit"
-                  disabled={pending}
                   className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {pending ? "Creating…" : "Create database"}
+                  Create database
                 </button>
               </div>
             </>

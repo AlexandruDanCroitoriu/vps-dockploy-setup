@@ -114,6 +114,7 @@ export async function createDatabaseAction(
           status: "error",
           message:
             "Database created and credentials saved, but its first deployment could not be started.",
+          createdService: { id: databaseId, type },
         };
       }
     }
@@ -124,6 +125,7 @@ export async function createDatabaseAction(
       message: deployAfterCreate
         ? "Database created, credentials updated, and deployment started."
         : "Database created and project credentials updated.",
+      createdService: { id: databaseId, type },
     };
   } catch (error) {
     if (databaseCreated) {

@@ -10,6 +10,10 @@ import {
 export type ActionState = {
   status: "idle" | "success" | "error";
   message: string;
+  createdService?: {
+    id: string;
+    type: DokployServiceType;
+  };
 };
 
 export async function requireAuthenticatedSession() {

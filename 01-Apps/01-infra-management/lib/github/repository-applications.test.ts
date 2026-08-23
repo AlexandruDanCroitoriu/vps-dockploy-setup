@@ -1,18 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
 import { getRepositoryApplications } from "./repository-applications";
 
 describe("repository application discovery", () => {
-  beforeEach(() => {
-    vi.stubEnv("GITHUB_REPOSITORY_OWNER", "AlexandruDanCroitoriu");
-    vi.stubEnv("GITHUB_REPOSITORY_NAME", "vps-dockploy-setup");
-    vi.stubEnv("GITHUB_REPOSITORY_BRANCH", "main");
-    vi.stubEnv("GITHUB_APPS_PATH", "01-Apps");
-  });
   afterEach(() => {
-    vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
 

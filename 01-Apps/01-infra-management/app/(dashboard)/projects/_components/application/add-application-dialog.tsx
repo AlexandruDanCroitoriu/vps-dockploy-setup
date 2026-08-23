@@ -1,7 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useState, useTransition } from "react";
+import {
+  type FormEvent,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 
 import { Button } from "@/components/ui/button";
 import { AppDialog } from "@/components/ui/dialog";
@@ -16,10 +21,13 @@ import type {
   DokployGithubProvider,
 } from "@/lib/dokploy";
 import type { RepositoryApplication } from "@/lib/github/repository-applications";
-import { notifyProjectsChanged } from "@/lib/project-events";
+import {
+  notifyProjectsChanged,
+  notifyProjectServiceCreation,
+  submitProjectServiceCreation,
+} from "@/lib/project-events";
 
 import {
-  createApplicationAction,
   generateApplicationDomainAction,
 } from "../../_actions/applications";
 import type { ActionState } from "../../_actions/shared";
@@ -73,18 +81,61 @@ export function AddApplicationDialog({
   const [domainHost, setDomainHost] = useState("");
   const [domainGenerationError, setDomainGenerationError] = useState("");
   const [domainGenerationPending, startDomainGeneration] = useTransition();
-  const action = createApplicationAction.bind(null, projectId);
-  const [state, formAction, pending] = useActionState(action, initialState);
+  const [state, setState] = useState(initialState);
+  const latestRequestIdRef = useRef("");
   const router = useRouter();
 
-  useEffect(() => {
-    if (state.status !== "success") return;
-    queueMicrotask(() => {
-      setIsOpen(false);
-      router.refresh();
-      notifyProjectsChanged();
+  async function submitApplication(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const requestId = crypto.randomUUID();
+    latestRequestIdRef.current = requestId;
+    const formData = new FormData(event.currentTarget);
+    notifyProjectServiceCreation({
+      phase: "started",
+      service: {
+        requestId,
+        projectId,
+        matchName: applicationName,
+        displayName: applicationName,
+        typeLabel: "Application",
+      },
     });
-  }, [router, state]);
+    setIsOpen(false);
+    const result = await submitProjectServiceCreation(
+      projectId,
+      "application",
+      formData,
+    );
+    if (latestRequestIdRef.current === requestId) {
+      setState({ status: result.status, message: result.message });
+    }
+    if (result.status === "error") {
+      if (result.createdService?.id) {
+        notifyProjectServiceCreation({
+          phase: "completed",
+          projectId,
+          requestId,
+          serviceId: result.createdService.id,
+        });
+        router.refresh();
+        notifyProjectsChanged();
+      } else {
+        notifyProjectServiceCreation({ phase: "failed", projectId, requestId });
+      }
+      if (latestRequestIdRef.current === requestId) setIsOpen(true);
+      return;
+    }
+    if (result.createdService?.id) {
+      notifyProjectServiceCreation({
+        phase: "completed",
+        projectId,
+        requestId,
+        serviceId: result.createdService.id,
+      });
+    }
+    router.refresh();
+    notifyProjectsChanged();
+  }
 
   function updateBuildPath(value: string) {
     setBuildPath(value);
@@ -152,17 +203,16 @@ export function AddApplicationDialog({
               <Button
                 type="submit"
                 form="create-application-form"
-                disabled={pending}
                 size="xs"
               >
-                {pending ? "Creating…" : "Create application"}
+                Create application
               </Button>
             </div>
           }
         >
           <form
             id="create-application-form"
-            action={formAction}
+            onSubmit={submitApplication}
             className={
               usesInfraManagementDefaults
                 ? "flex flex-col gap-4 px-5 py-4"
