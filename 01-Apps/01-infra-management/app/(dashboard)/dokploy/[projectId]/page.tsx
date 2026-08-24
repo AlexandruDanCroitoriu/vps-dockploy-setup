@@ -10,6 +10,7 @@ import {
 } from "@/lib/dokploy";
 import { getUnavailableComposeServiceDefinitionIds } from "@/compose-services/registry";
 import { getRepositoryApplicationsResult } from "@/lib/github/repository-applications";
+import { getInfraManagementZotImage } from "@/lib/zot/infra-management-image";
 
 import { ProjectCard } from "../_components/project/project-card";
 import { ReloadButton } from "../_components/reload-button";
@@ -38,12 +39,14 @@ async function ProjectContent({
     githubProviders,
     repositoryApplications,
     activeInstance,
+    infraManagementImage,
   ] = await Promise.all([
     getDokployProject(projectId),
     getDokployProjects(),
     getDokployGithubProviders().catch(() => []),
     getRepositoryApplicationsResult(),
     getActiveDokployConfiguration(),
+    getInfraManagementZotImage(),
   ]);
 
   if (!project) notFound();
@@ -52,7 +55,7 @@ async function ProjectContent({
     <div>
       <div className="flex items-center justify-between gap-3">
         <Link
-          href="/projects"
+          href="/dokploy"
           className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-300 dark:hover:text-indigo-200"
         >
           ← All projects
@@ -68,6 +71,10 @@ async function ProjectContent({
           githubProviders={githubProviders}
           repositoryApplications={repositoryApplications.applications}
           repositoryApplicationsError={repositoryApplications.error}
+          infraManagementImageAvailability={{
+            available: infraManagementImage.available,
+            message: infraManagementImage.message,
+          }}
           rootDomain={activeInstance?.rootDomain ?? ""}
           defaultServiceCredentials={{
             username: activeInstance?.defaultServiceUsername ?? "admin",

@@ -76,7 +76,7 @@ export async function createDomainAction(
       https: formData.get("https") === "on",
       letsEncrypt: formData.get("letsEncrypt") === "on",
     });
-    revalidatePath(`/projects/${projectId}/services/${type}/${serviceId}`);
+    revalidatePath(`/dokploy/${projectId}/services/${type}/${serviceId}`);
     return { status: "success", message: "Domain created." };
   } catch (error) {
     return getActionError(error, "Unable to create the domain.", "the domain");
@@ -131,7 +131,7 @@ export async function updateDomainAction(
     return { status: "error", message: "Enter a valid hostname and port." };
   try {
     await updateDokployDomain({ ...input, domainId, host });
-    revalidatePath(`/projects/${projectId}`, "layout");
+    revalidatePath(`/dokploy/${projectId}`, "layout");
     return { status: "success", message: "Domain updated." };
   } catch (error) {
     return getActionError(

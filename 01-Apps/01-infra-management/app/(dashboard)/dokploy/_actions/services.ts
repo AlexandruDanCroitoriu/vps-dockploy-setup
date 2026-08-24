@@ -162,8 +162,8 @@ export async function reloadServiceAction(
     return { status: "error", message: "Invalid service." };
   try {
     await reloadDokployService(type, serviceId, appName);
-    revalidatePath("/projects");
-    revalidatePath(`/projects/${projectId}`);
+    revalidatePath("/dokploy");
+    revalidatePath(`/dokploy/${projectId}`);
     return { status: "success", message: "Service reloaded." };
   } catch (error) {
     return getActionError(error, "Unable to reload the service.", "the reload");
@@ -184,8 +184,8 @@ export async function stopServiceAction(
     return { status: "error", message: "Invalid service." };
   try {
     await stopDokployService(type, serviceId);
-    revalidatePath("/projects");
-    revalidatePath(`/projects/${projectId}`);
+    revalidatePath("/dokploy");
+    revalidatePath(`/dokploy/${projectId}`);
     return { status: "success", message: "Service stopped." };
   } catch (error) {
     return getActionError(error, "Unable to stop the service.", "the stop");
@@ -206,8 +206,8 @@ export async function startServiceAction(
     return { status: "error", message: "Invalid service." };
   try {
     await startDokployService(type, serviceId);
-    revalidatePath("/projects");
-    revalidatePath(`/projects/${projectId}`);
+    revalidatePath("/dokploy");
+    revalidatePath(`/dokploy/${projectId}`);
     return { status: "success", message: "Service started." };
   } catch (error) {
     return getActionError(error, "Unable to start the service.", "the start");
@@ -231,8 +231,8 @@ export async function deployServiceAction(
       await synchronizeManagedCompose(projectId, serviceId);
     }
     await deployDokployService(type, serviceId);
-    revalidatePath("/projects");
-    revalidatePath(`/projects/${projectId}`);
+    revalidatePath("/dokploy");
+    revalidatePath(`/dokploy/${projectId}`);
     return { status: "success", message: "Deployment started." };
   } catch (error) {
     return getActionError(

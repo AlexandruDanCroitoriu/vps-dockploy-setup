@@ -43,6 +43,8 @@ describe("Dockploy instance storage", () => {
       name: "Production",
       rootUrl: "https://dokploy.example.com",
       rootDomain: "example.com",
+      vpsIp: "203.0.113.10",
+      vpsPassword: "root-password",
       apiKey: "secret-key",
       defaultServiceUsername: "service-admin",
       defaultServicePassword: "service-password",
@@ -53,6 +55,8 @@ describe("Dockploy instance storage", () => {
     expect(listDokployInstances()[0]).not.toHaveProperty("apiKey");
     expect(getDokployInstance(created.id)?.apiKey).toBe("secret-key");
     expect(getDokployInstance(created.id)).toMatchObject({
+      vpsIp: "203.0.113.10",
+      vpsPassword: "root-password",
       defaultServiceUsername: "service-admin",
       defaultServicePassword: "service-password",
     });
@@ -63,6 +67,8 @@ describe("Dockploy instance storage", () => {
       name: "Production",
       rootUrl: "https://dokploy.example.com",
       rootDomain: "example.com",
+      vpsIp: "203.0.113.10",
+      vpsPassword: "old-root-password",
       apiKey: "old-key",
       defaultServiceUsername: "old-user",
       defaultServicePassword: "old-password",
@@ -73,6 +79,8 @@ describe("Dockploy instance storage", () => {
         name: "Primary",
         rootUrl: "https://dockploy.primary.example.com",
         rootDomain: "primary.example.com",
+        vpsIp: "203.0.113.20",
+        vpsPassword: "new-root-password",
         apiKey: "new-key",
         defaultServiceUsername: "new-user",
         defaultServicePassword: "new-password",
@@ -85,6 +93,8 @@ describe("Dockploy instance storage", () => {
     });
     expect(getDokployInstance(created.id)?.apiKey).toBe("new-key");
     expect(getDokployInstance(created.id)).toMatchObject({
+      vpsIp: "203.0.113.20",
+      vpsPassword: "new-root-password",
       defaultServiceUsername: "new-user",
       defaultServicePassword: "new-password",
     });

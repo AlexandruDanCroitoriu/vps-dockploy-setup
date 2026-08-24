@@ -12,7 +12,10 @@ import { UserMenu } from "./user-menu";
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: HomeIcon },
-  { name: "Projects", href: "/projects", icon: FolderIcon },
+  ...(process.env.NODE_ENV === "development"
+    ? [{ name: "Projects", href: "/projects", icon: FolderIcon } as const]
+    : []),
+  { name: "Dokploy", href: "/dokploy", icon: FolderIcon },
 ] as const;
 const classes = (...values: Array<string | false | undefined>) =>
   values.filter(Boolean).join(" ");
@@ -22,6 +25,7 @@ export function Sidebar({
   projectsError,
   instances,
   activeInstanceId,
+  dokployAvailable,
   userName,
   onNavigate,
 }: {
@@ -29,6 +33,7 @@ export function Sidebar({
   projectsError: string;
   instances: DokployInstanceSummary[];
   activeInstanceId: string | null;
+  dokployAvailable: boolean;
   userName: string;
   onNavigate?: () => void;
 }) {
@@ -49,7 +54,7 @@ export function Sidebar({
       <nav className="flex flex-1 flex-col">
         <ul className="space-y-0.5">
           {navigation
-            .filter((item) => item.href !== "/projects" || activeInstanceId)
+            .filter((item) => item.href !== "/dokploy" || dokployAvailable)
             .map((item) => {
               const current =
                 item.href === "/"
@@ -72,7 +77,7 @@ export function Sidebar({
                     <item.icon className="size-5 shrink-0" />
                     {item.name}
                   </Link>
-                  {item.href === "/projects" && (
+                  {item.href === "/dokploy" && (
                     <SidebarProjectTree
                       projects={projects}
                       error={projectsError}

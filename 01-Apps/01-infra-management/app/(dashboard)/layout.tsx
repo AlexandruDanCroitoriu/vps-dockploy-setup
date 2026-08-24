@@ -2,11 +2,14 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/auth";
 import {
   getActiveDokployInstanceSummary,
+  getActiveDokployInstanceId,
   getDokployInstanceSummaries,
   getDokployProjects,
   getServiceTypeLabel,
   isDatabaseService,
 } from "@/lib/dokploy";
+import { getLatestDokployProvisioningJob } from "@/lib/storage/dokploy-provisioning";
+import { getDokployInstanceSummary } from "@/lib/storage/dokploy-instances";
 import {
   DashboardShell,
   type SidebarProject,
@@ -17,8 +20,35 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const instances = getDokployInstanceSummaries();
-  const activeInstance = await getActiveDokployInstanceSummary();
+  const storedInstances = getDokployInstanceSummaries();
+  const selectedInstance = await getActiveDokployInstanceSummary();
+  const activeInstanceId = await getActiveDokployInstanceId();
+  const provisioningJob = getLatestDokployProvisioningJob();
+  const activeInstance =
+    selectedInstance ??
+    (provisioningJob?.id === activeInstanceId && provisioningJob.instanceId
+      ? getDokployInstanceSummary(provisioningJob.instanceId)
+      : null);
+  const provisioningHasInstance =
+    provisioningJob &&
+    (Boolean(provisioningJob.instanceId) ||
+      storedInstances.some(
+        (instance) => instance.rootUrl === provisioningJob.rootUrl,
+      ));
+  const provisioningSummary =
+    provisioningJob &&
+    provisioningJob.status !== "complete" &&
+    !provisioningHasInstance
+      ? {
+          id: provisioningJob.id,
+          name: `${provisioningJob.name} (setting up)`,
+          rootUrl: provisioningJob.rootUrl,
+          rootDomain: provisioningJob.rootDomain,
+        }
+      : null;
+  const instances = provisioningSummary
+    ? [...storedInstances, provisioningSummary]
+    : storedInstances;
   const [session, result] = await Promise.all([
     getServerSession(authOptions),
     activeInstance
@@ -49,7 +79,8 @@ export default async function DashboardLayout({
       initialProjects={projects}
       initialProjectsError={result.error}
       instances={instances}
-      activeInstanceId={activeInstance?.id ?? null}
+      activeInstanceId={activeInstance?.id ?? activeInstanceId}
+      dokployAvailable={Boolean(activeInstance)}
       userName={session?.user?.name || "Administrator"}
     >
       {children}

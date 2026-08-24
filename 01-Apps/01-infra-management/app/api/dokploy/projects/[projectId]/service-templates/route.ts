@@ -2,9 +2,9 @@ import { randomBytes } from "node:crypto";
 import { getServerSession } from "next-auth";
 
 import { authOptions } from "@/auth";
-import { createComposeAction } from "@/app/(dashboard)/projects/_actions/composes";
-import { createDatabaseAction } from "@/app/(dashboard)/projects/_actions/databases";
-import type { ActionState } from "@/app/(dashboard)/projects/_actions/shared";
+import { createComposeAction } from "@/app/(dashboard)/dokploy/_actions/composes";
+import { createDatabaseAction } from "@/app/(dashboard)/dokploy/_actions/databases";
+import type { ActionState } from "@/app/(dashboard)/dokploy/_actions/shared";
 import {
   getActiveDokployConfiguration,
   getDokployProject,

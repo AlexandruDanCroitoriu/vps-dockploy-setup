@@ -119,7 +119,7 @@ export function ProjectSettingsMenu({
     if (deleteState.status !== "success") return;
     queueMicrotask(() => {
       setDeleteOpen(false);
-      router.push("/projects");
+      router.push("/dokploy");
       router.refresh();
     });
   }, [deleteState.status, router]);

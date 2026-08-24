@@ -99,8 +99,8 @@ export async function createDatabaseAction(
     );
     if (deployAfterCreate) {
       if (!databaseId) {
-        revalidatePath("/projects");
-        revalidatePath(`/projects/${projectId}`);
+        revalidatePath("/dokploy");
+        revalidatePath(`/dokploy/${projectId}`);
         return {
           status: "error",
           message:
@@ -108,8 +108,8 @@ export async function createDatabaseAction(
         };
       }
       if (!(await startInitialDeployment(type, databaseId))) {
-        revalidatePath("/projects");
-        revalidatePath(`/projects/${projectId}`);
+        revalidatePath("/dokploy");
+        revalidatePath(`/dokploy/${projectId}`);
         return {
           status: "error",
           message:
@@ -118,8 +118,8 @@ export async function createDatabaseAction(
         };
       }
     }
-    revalidatePath("/projects");
-    revalidatePath(`/projects/${projectId}`);
+    revalidatePath("/dokploy");
+    revalidatePath(`/dokploy/${projectId}`);
     return {
       status: "success",
       message: deployAfterCreate

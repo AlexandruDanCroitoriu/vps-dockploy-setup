@@ -28,7 +28,7 @@ export function SidebarProjectTree({
   return (
     <ul className="mt-0.5 space-y-0.5 pl-7">
       {projects.map((project) => {
-        const href = `/projects/${encodeURIComponent(project.projectId)}`;
+        const href = `/dokploy/${encodeURIComponent(project.projectId)}`;
         const current = pathname === href || pathname.startsWith(`${href}/`);
         return (
           <li key={project.projectId}>

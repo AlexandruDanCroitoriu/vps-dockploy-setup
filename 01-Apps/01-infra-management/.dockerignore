@@ -1,0 +1,12 @@
+.git
+.next
+.next-e2e
+node_modules
+coverage
+playwright-report
+test-results
+data
+.env
+.env.*
+!.env.example
+npm-debug.log*

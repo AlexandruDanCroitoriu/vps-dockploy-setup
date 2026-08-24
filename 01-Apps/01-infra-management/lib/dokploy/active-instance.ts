@@ -8,22 +8,33 @@ import {
   getDokployInstanceSummary,
   listDokployInstances,
 } from "@/lib/storage/dokploy-instances";
+import { getDokployProvisioningJob } from "@/lib/storage/dokploy-provisioning";
 
 export const ACTIVE_DOKPLOY_COOKIE = "active_dokploy_id";
 
-const getActiveDokployInstanceId = cache(async () => {
+export const getActiveDokployInstanceId = cache(async () => {
   bootstrapLegacyDokployInstance();
   return (await cookies()).get(ACTIVE_DOKPLOY_COOKIE)?.value ?? null;
 });
 
 export const getActiveDokployInstanceSummary = cache(async () => {
   const instanceId = await getActiveDokployInstanceId();
-  return instanceId ? getDokployInstanceSummary(instanceId) : null;
+  if (!instanceId) return null;
+  const instance = getDokployInstanceSummary(instanceId);
+  if (instance) return instance;
+  const completedInstanceId = getDokployProvisioningJob(instanceId)?.instanceId;
+  return completedInstanceId
+    ? getDokployInstanceSummary(completedInstanceId)
+    : null;
 });
 
 export const getActiveDokployConfiguration = cache(async () => {
   const instanceId = await getActiveDokployInstanceId();
-  return instanceId ? getDokployInstance(instanceId) : null;
+  if (!instanceId) return null;
+  const instance = getDokployInstance(instanceId);
+  if (instance) return instance;
+  const completedInstanceId = getDokployProvisioningJob(instanceId)?.instanceId;
+  return completedInstanceId ? getDokployInstance(completedInstanceId) : null;
 });
 
 export function getDokployInstanceSummaries() {

@@ -2,10 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next-auth", () => ({ getServerSession: vi.fn() }));
 vi.mock("@/auth", () => ({ authOptions: {} }));
-vi.mock("@/app/(dashboard)/projects/_actions/databases", () => ({
+vi.mock("@/app/(dashboard)/dokploy/_actions/databases", () => ({
   createDatabaseAction: vi.fn(),
 }));
-vi.mock("@/app/(dashboard)/projects/_actions/composes", () => ({
+vi.mock("@/app/(dashboard)/dokploy/_actions/composes", () => ({
   createComposeAction: vi.fn(),
 }));
 vi.mock("@/lib/dokploy", () => ({
@@ -14,8 +14,8 @@ vi.mock("@/lib/dokploy", () => ({
 }));
 
 import { getServerSession } from "next-auth";
-import { createComposeAction } from "@/app/(dashboard)/projects/_actions/composes";
-import { createDatabaseAction } from "@/app/(dashboard)/projects/_actions/databases";
+import { createComposeAction } from "@/app/(dashboard)/dokploy/_actions/composes";
+import { createDatabaseAction } from "@/app/(dashboard)/dokploy/_actions/databases";
 import {
   getActiveDokployConfiguration,
   getDokployProject,
@@ -42,6 +42,8 @@ describe("service template route", () => {
       rootUrl: "https://example.com",
       apiKey: "secret",
       rootDomain: "example.com",
+      vpsIp: "203.0.113.10",
+      vpsPassword: "root-password",
       defaultServiceUsername: "operator",
       defaultServicePassword: "login-secret",
     });

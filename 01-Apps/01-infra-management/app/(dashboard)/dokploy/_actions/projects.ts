@@ -45,7 +45,7 @@ export async function deleteProjectAction(
       };
     }
     await removeDokployProject(projectId);
-    revalidatePath("/projects");
+    revalidatePath("/dokploy");
     return { status: "success", message: "Project deleted." };
   } catch (error) {
     return getActionError(
@@ -116,8 +116,8 @@ export async function setProjectServicesStateAction(
       }),
     );
     const failures = results.filter((result) => result.status === "rejected");
-    revalidatePath("/projects");
-    revalidatePath(`/projects/${projectId}`);
+    revalidatePath("/dokploy");
+    revalidatePath(`/dokploy/${projectId}`);
     if (failures.length > 0) {
       return {
         status: "error",
@@ -168,7 +168,7 @@ export async function createProjectAction(
 
   try {
     await createDokployProject(name, description);
-    revalidatePath("/projects");
+    revalidatePath("/dokploy");
     return { status: "success", message: "Project created." };
   } catch (error) {
     return getActionError(
@@ -194,8 +194,8 @@ export async function updateProjectNameAction(
 
   try {
     await updateDokployProjectName(projectId, name);
-    revalidatePath("/projects");
-    revalidatePath(`/projects/${projectId}`);
+    revalidatePath("/dokploy");
+    revalidatePath(`/dokploy/${projectId}`);
     return { status: "success", message: "Project renamed." };
   } catch (error) {
     return getActionError(error, "Unable to rename the project.", "the rename");

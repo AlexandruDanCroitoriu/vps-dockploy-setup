@@ -184,8 +184,8 @@ export async function createComposeAction(
     });
     if (deployAfterCreate) {
       if (!(await startInitialDeployment("compose", composeId))) {
-        revalidatePath("/projects");
-        revalidatePath(`/projects/${projectId}`);
+        revalidatePath("/dokploy");
+        revalidatePath(`/dokploy/${projectId}`);
         return {
           status: "error",
           message:
@@ -194,8 +194,8 @@ export async function createComposeAction(
         };
       }
     }
-    revalidatePath("/projects");
-    revalidatePath(`/projects/${projectId}`);
+    revalidatePath("/dokploy");
+    revalidatePath(`/dokploy/${projectId}`);
     return {
       status: "success",
       message: deployAfterCreate

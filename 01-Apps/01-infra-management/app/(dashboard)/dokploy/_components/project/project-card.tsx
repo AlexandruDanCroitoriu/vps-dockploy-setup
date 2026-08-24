@@ -38,6 +38,7 @@ export function ProjectCard({
   githubProviders,
   repositoryApplications,
   repositoryApplicationsError,
+  infraManagementImageAvailability,
   rootDomain,
   defaultServiceCredentials,
   unavailableComposeDefinitionIds = [],
@@ -49,6 +50,10 @@ export function ProjectCard({
   githubProviders?: DokployGithubProvider[];
   repositoryApplications?: RepositoryApplication[];
   repositoryApplicationsError?: string;
+  infraManagementImageAvailability?: {
+    available: boolean;
+    message: string;
+  };
   rootDomain: string;
   defaultServiceCredentials: { username: string; password: string };
   unavailableComposeDefinitionIds?: string[];
@@ -74,7 +79,7 @@ export function ProjectCard({
                 />
               ) : (
                 <Link
-                  href={`/projects/${encodeURIComponent(project.projectId)}`}
+                  href={`/dokploy/${encodeURIComponent(project.projectId)}`}
                   className="hover:text-indigo-600 dark:hover:text-indigo-300"
                 >
                   {project.name}
@@ -101,6 +106,12 @@ export function ProjectCard({
                 githubProviders={githubProviders}
                 repositoryApplications={repositoryApplications}
                 repositoryApplicationsError={repositoryApplicationsError ?? ""}
+                infraManagementImageAvailability={
+                  infraManagementImageAvailability ?? {
+                    available: false,
+                    message: "Unable to verify infra-management:latest in Zot.",
+                  }
+                }
                 rootDomain={rootDomain}
                 deployedApplications={project.environments.flatMap(
                   (environment) =>
@@ -266,7 +277,7 @@ async function ProjectServices({
                 serviceActionsMenu={serviceActionsMenu}
                 href={
                   linkServices
-                    ? `/projects/${encodeURIComponent(projectId)}/services/${service.type}/${encodeURIComponent(service.id)}`
+                    ? `/dokploy/${encodeURIComponent(projectId)}/services/${service.type}/${encodeURIComponent(service.id)}`
                     : undefined
                 }
               />

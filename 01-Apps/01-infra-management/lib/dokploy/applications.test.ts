@@ -8,6 +8,7 @@ vi.mock("./client", () => ({
 
 import { dokployGet, dokployPost } from "./client";
 import {
+  createDokployDockerApplication,
   createDokployGithubApplication,
   getDokployGithubProviders,
   type CreateDokployGithubApplicationInput,
@@ -133,6 +134,70 @@ describe("GitHub applications", () => {
     expect(dokployPost).toHaveBeenCalledWith("application.saveEnvironment", {
       applicationId: "application-1",
       env: 'AUTH_SECRET="generated-secret"',
+      buildArgs: null,
+      buildSecrets: null,
+      createEnvFile: false,
+    });
+  });
+});
+
+describe("Docker applications", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("configures the application to pull a private Zot image", async () => {
+    vi.mocked(dokployPost).mockResolvedValueOnce({
+      applicationId: "application-1",
+    });
+
+    await expect(
+      createDokployDockerApplication({
+        name: "01-infra-management",
+        environmentId: "environment-1",
+        image: "zot.example.com/infra-management:latest",
+        registryUrl: "zot.example.com",
+        registryUsername: "registry-user",
+        registryPassword: "registry-password",
+        environmentVariables: 'AUTH_SECRET="generated-secret"',
+      }),
+    ).resolves.toBe("application-1");
+
+    expect(dokployPost).toHaveBeenNthCalledWith(1, "application.create", {
+      name: "01-infra-management",
+      appName: "01-infra-management",
+      environmentId: "environment-1",
+      sourceType: "docker",
+    });
+    expect(dokployPost).toHaveBeenNthCalledWith(
+      2,
+      "application.saveDockerProvider",
+      {
+        applicationId: "application-1",
+        dockerImage: "zot.example.com/infra-management:latest",
+        registryUrl: "zot.example.com",
+        username: "registry-user",
+        password: "registry-password",
+      },
+    );
+  });
+
+  it("removes a Docker application when registry setup fails", async () => {
+    vi.mocked(dokployPost)
+      .mockResolvedValueOnce({ applicationId: "application-1" })
+      .mockRejectedValueOnce(new Error("registry failed"))
+      .mockResolvedValueOnce(undefined);
+
+    await expect(
+      createDokployDockerApplication({
+        name: "01-infra-management",
+        environmentId: "environment-1",
+        image: "zot.example.com/infra-management:latest",
+        registryUrl: "zot.example.com",
+        registryUsername: "registry-user",
+        registryPassword: "registry-password",
+      }),
+    ).rejects.toThrow("registry failed");
+    expect(dokployPost).toHaveBeenLastCalledWith("application.delete", {
+      applicationId: "application-1",
     });
   });
 });

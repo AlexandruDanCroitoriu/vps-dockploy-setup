@@ -57,6 +57,38 @@ function versionThreeDatabase() {
   return db;
 }
 
+function versionFourDatabase() {
+  const db = versionThreeDatabase();
+  db.exec(`
+    ALTER TABLE dokploy_instances
+    ADD COLUMN default_service_username TEXT NOT NULL DEFAULT 'admin';
+    ALTER TABLE dokploy_instances
+    ADD COLUMN default_service_password TEXT NOT NULL DEFAULT 'admin';
+    INSERT INTO schema_migrations VALUES (4, '2026-01-04T00:00:00.000Z');
+  `);
+  return db;
+}
+
+function versionFiveDatabase() {
+  const db = versionFourDatabase();
+  db.exec(`
+    ALTER TABLE dokploy_instances
+    ADD COLUMN vps_ip TEXT NOT NULL DEFAULT '';
+    INSERT INTO schema_migrations VALUES (5, '2026-01-05T00:00:00.000Z');
+  `);
+  return db;
+}
+
+function versionSixDatabase() {
+  const db = versionFiveDatabase();
+  db.exec(`
+    ALTER TABLE dokploy_instances
+    ADD COLUMN vps_password TEXT NOT NULL DEFAULT '';
+    INSERT INTO schema_migrations VALUES (6, '2026-01-06T00:00:00.000Z');
+  `);
+  return db;
+}
+
 describe("SQLite migrations", () => {
   it("upgrades a version-one database and backfills instance defaults", () => {
     const db = versionOneDatabase();
@@ -79,7 +111,14 @@ describe("SQLite migrations", () => {
       db
         .prepare("SELECT version FROM schema_migrations ORDER BY version")
         .all(),
-    ).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }]);
+    ).toEqual([
+      { version: 1 },
+      { version: 2 },
+      { version: 3 },
+      { version: 4 },
+      { version: 5 },
+      { version: 6 }, { version: 7 },
+    ]);
   });
 
   it("upgrades a version-two database and normalizes its root domain", () => {
@@ -95,7 +134,14 @@ describe("SQLite migrations", () => {
       db
         .prepare("SELECT version FROM schema_migrations ORDER BY version")
         .all(),
-    ).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }]);
+    ).toEqual([
+      { version: 1 },
+      { version: 2 },
+      { version: 3 },
+      { version: 4 },
+      { version: 5 },
+      { version: 6 }, { version: 7 },
+    ]);
   });
 
   it("upgrades a version-three database with service credential defaults", () => {
@@ -117,7 +163,71 @@ describe("SQLite migrations", () => {
       db
         .prepare("SELECT version FROM schema_migrations ORDER BY version")
         .all(),
-    ).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }]);
+    ).toEqual([
+      { version: 1 },
+      { version: 2 },
+      { version: 3 },
+      { version: 4 },
+      { version: 5 },
+      { version: 6 }, { version: 7 },
+    ]);
+  });
+
+  it("upgrades a version-four database with an empty VPS IP", () => {
+    const db = versionFourDatabase();
+    runMigrations(db);
+
+    expect(
+      db
+        .prepare("SELECT vps_ip FROM dokploy_instances WHERE id = ?")
+        .get("instance-1"),
+    ).toEqual({ vps_ip: "" });
+    expect(
+      db
+        .prepare("SELECT version FROM schema_migrations ORDER BY version")
+        .all(),
+    ).toEqual([
+      { version: 1 },
+      { version: 2 },
+      { version: 3 },
+      { version: 4 },
+      { version: 5 },
+      { version: 6 }, { version: 7 },
+    ]);
+  });
+
+  it("upgrades a version-five database with an empty VPS password", () => {
+    const db = versionFiveDatabase();
+    runMigrations(db);
+
+    expect(
+      db
+        .prepare("SELECT vps_password FROM dokploy_instances WHERE id = ?")
+        .get("instance-1"),
+    ).toEqual({ vps_password: "" });
+    expect(
+      db
+        .prepare("SELECT version FROM schema_migrations ORDER BY version")
+        .all(),
+    ).toEqual([
+      { version: 1 },
+      { version: 2 },
+      { version: 3 },
+      { version: 4 },
+      { version: 5 },
+      { version: 6 }, { version: 7 },
+    ]);
+  });
+
+  it("upgrades version six with durable provisioning jobs", () => {
+    const db = versionSixDatabase();
+    runMigrations(db);
+    expect(
+      db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(
+        "dokploy_provisioning_jobs",
+      ),
+    ).toEqual({ name: "dokploy_provisioning_jobs" });
+    expect(() => runMigrations(db)).not.toThrow();
   });
 
   it("is idempotent after all migrations are applied", () => {
@@ -126,6 +236,6 @@ describe("SQLite migrations", () => {
     expect(() => runMigrations(db)).not.toThrow();
     expect(
       db.prepare("SELECT COUNT(*) count FROM schema_migrations").get(),
-    ).toEqual({ count: 4 });
+    ).toEqual({ count: 7 });
   });
 });

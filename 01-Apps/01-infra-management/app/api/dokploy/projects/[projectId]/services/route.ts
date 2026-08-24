@@ -1,10 +1,10 @@
 import { getServerSession } from "next-auth";
 
 import { authOptions } from "@/auth";
-import { createApplicationAction } from "@/app/(dashboard)/projects/_actions/applications";
-import { createComposeAction } from "@/app/(dashboard)/projects/_actions/composes";
-import { createDatabaseAction } from "@/app/(dashboard)/projects/_actions/databases";
-import type { ActionState } from "@/app/(dashboard)/projects/_actions/shared";
+import { createApplicationAction } from "@/app/(dashboard)/dokploy/_actions/applications";
+import { createComposeAction } from "@/app/(dashboard)/dokploy/_actions/composes";
+import { createDatabaseAction } from "@/app/(dashboard)/dokploy/_actions/databases";
+import type { ActionState } from "@/app/(dashboard)/dokploy/_actions/shared";
 
 const initialState: ActionState = { status: "idle", message: "" };
 

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { AppDialog } from "@/components/ui/dialog";
 import { ActionMessage } from "@/components/ui/form-field";
 import { deleteDokployInstanceAction } from "../../_actions/dokploy-instances";
-import type { ActionState } from "../../projects/_actions/shared";
+import type { ActionState } from "../../dokploy/_actions/shared";
 
 const initialState: ActionState = { status: "idle", message: "" };
 
@@ -37,9 +37,10 @@ export function DeleteDokployInstanceButton({
         type="button"
         onClick={() => setOpen(true)}
         aria-label={`Delete ${instanceName}`}
-        className="absolute top-4 right-4 rounded-md p-2 text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-400"
+        className="inline-flex items-center gap-1.5 rounded-md border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-500/30 dark:text-red-400 dark:hover:bg-red-500/10"
       >
-        <TrashIcon className="size-5" aria-hidden="true" />
+        <TrashIcon className="size-4" aria-hidden="true" />
+        Remove instance
       </button>
 
       {open && (
@@ -78,8 +79,9 @@ export function DeleteDokployInstanceButton({
             className="space-y-3 px-5 py-4"
           >
             <p className="text-sm text-gray-600 dark:text-gray-300">
-              This removes the stored URL, root domain, and API/CLI key. It does
-              not delete anything from the Dockploy server.
+              This removes the stored URL, domain, VPS IP, VPS password, service
+              credentials, and API/CLI key. It does not uninstall Dokploy or
+              delete anything from the VPS.
             </p>
             <ActionMessage status={state.status} message={state.message} />
           </form>

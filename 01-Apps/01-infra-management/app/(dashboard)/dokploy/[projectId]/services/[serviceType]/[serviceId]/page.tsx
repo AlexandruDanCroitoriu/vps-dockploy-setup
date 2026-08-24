@@ -129,7 +129,7 @@ async function ServiceContent({
           domains={domains}
           projectId={project.projectId}
           serviceActionsMenu
-          serviceDeleteRedirectHref={`/projects/${encodeURIComponent(project.projectId)}`}
+          serviceDeleteRedirectHref={`/dokploy/${encodeURIComponent(project.projectId)}`}
           showCredentialsButton={!isDatabase}
           showEnvironmentEditor={false}
         />

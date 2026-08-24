@@ -198,8 +198,8 @@ export async function DELETE(
         ),
       );
     }
-    revalidatePath("/projects");
-    revalidatePath(`/projects/${projectId}`);
+    revalidatePath("/dokploy");
+    revalidatePath(`/dokploy/${projectId}`);
     return Response.json({ success: true });
   } catch {
     return Response.json(

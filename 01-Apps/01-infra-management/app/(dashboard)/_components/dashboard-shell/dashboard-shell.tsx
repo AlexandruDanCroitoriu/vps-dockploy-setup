@@ -20,6 +20,7 @@ export function DashboardShell({
   initialProjectsError,
   instances,
   activeInstanceId,
+  dokployAvailable,
   userName,
 }: {
   children: React.ReactNode;
@@ -27,6 +28,7 @@ export function DashboardShell({
   initialProjectsError: string;
   instances: DokployInstanceSummary[];
   activeInstanceId: string | null;
+  dokployAvailable: boolean;
   userName: string;
 }) {
   const pathname = usePathname();
@@ -84,6 +86,7 @@ export function DashboardShell({
               projectsError={projectsError}
               instances={instances}
               activeInstanceId={activeInstanceId}
+              dokployAvailable={dokployAvailable}
               userName={userName}
               onNavigate={() => setSidebarOpen(false)}
             />
@@ -96,6 +99,7 @@ export function DashboardShell({
           projectsError={projectsError}
           instances={instances}
           activeInstanceId={activeInstanceId}
+          dokployAvailable={dokployAvailable}
           userName={userName}
         />
       </div>

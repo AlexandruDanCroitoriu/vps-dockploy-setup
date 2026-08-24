@@ -27,6 +27,35 @@ const migrations = [
     ALTER TABLE dokploy_instances
     ADD COLUMN default_service_password TEXT NOT NULL DEFAULT 'admin';
   `,
+  `
+    ALTER TABLE dokploy_instances
+    ADD COLUMN vps_ip TEXT NOT NULL DEFAULT '';
+  `,
+  `
+    ALTER TABLE dokploy_instances
+    ADD COLUMN vps_password TEXT NOT NULL DEFAULT '';
+  `,
+  `
+    CREATE TABLE dokploy_provisioning_jobs (
+      id TEXT PRIMARY KEY,
+      instance_id TEXT,
+      name TEXT NOT NULL,
+      root_url TEXT NOT NULL UNIQUE,
+      root_domain TEXT NOT NULL,
+      vps_ip TEXT NOT NULL,
+      vps_password TEXT NOT NULL,
+      default_service_username TEXT NOT NULL,
+      default_service_password TEXT NOT NULL,
+      api_key TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL,
+      steps_json TEXT NOT NULL DEFAULT '{}',
+      logs_json TEXT NOT NULL DEFAULT '{}',
+      error TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (instance_id) REFERENCES dokploy_instances(id) ON DELETE SET NULL
+    );
+  `,
 ] as const;
 
 export function runMigrations(database: Database.Database) {

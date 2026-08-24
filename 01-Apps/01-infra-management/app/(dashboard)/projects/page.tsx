@@ -1,100 +1,72 @@
-import { Suspense } from "react";
+import { notFound } from "next/navigation";
 
-import {
-  getActiveDokployConfiguration,
-  getDokployGithubProviders,
-  getDokployProjects,
-} from "@/lib/dokploy";
-import { getRepositoryApplicationsResult } from "@/lib/github/repository-applications";
-import { getUnavailableComposeServiceDefinitionIds } from "@/compose-services/registry";
+import { listLocalDockerImages } from "@/lib/docker/local-image-builder";
+import { getRepositoryProjects } from "@/lib/repository-projects";
+import { getActiveZotRegistry } from "@/lib/zot/active-registry";
+import { getZotRegistryImages } from "@/lib/zot/registry-images";
 
-import { ProjectCard } from "./_components/project/project-card";
-import { CreateProjectDialog } from "./_components/project/create-project-dialog";
-import { ReloadButton } from "./_components/reload-button";
+import { ProjectImageCard } from "./_components/project-image-card";
 
-export default function ProjectsPage() {
+export default async function ProjectsPage() {
+  if (process.env.NODE_ENV !== "development") notFound();
+
+  const [projects, zotRegistry] = await Promise.all([
+    getRepositoryProjects(),
+    getActiveZotRegistry().catch(() => null),
+  ]);
+  const projectInventories = await Promise.all(
+    projects.map(async (project) => {
+      const [localResult, zotResult] = await Promise.all([
+        listLocalDockerImages(project.imageRepository).then(
+          (images) => ({ images, error: "" }),
+          () => ({ images: [], error: "Unable to load local Docker images." }),
+        ),
+        zotRegistry
+          ? getZotRegistryImages(zotRegistry, project.imageRepository).then(
+              (images) => ({ images, error: "" }),
+              () => ({
+                images: [],
+                error: "Unable to load Zot image versions.",
+              }),
+            )
+          : Promise.resolve({ images: [], error: "" }),
+      ]);
+      return { project, localResult, zotResult };
+    }),
+  );
+
   return (
     <div>
-      <div className="flex items-center justify-between gap-3">
+      <div>
         <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
           Projects
         </h1>
-        <div className="flex items-center gap-2">
-          <ReloadButton />
-          <CreateProjectDialog />
-        </div>
+        <p className="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400">
+          Build production images from local 01-Apps projects, then push them to
+          the Zot registry on the active Dokploy instance.
+        </p>
       </div>
 
-      <Suspense fallback={<ProjectsLoading />}>
-        <ProjectsContent />
-      </Suspense>
-    </div>
-  );
-}
-
-function ProjectsLoading() {
-  return (
-    <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-gray-800/40">
-      <div className="flex items-center gap-3">
-        <span className="size-3 animate-pulse rounded-full bg-indigo-500" />
-        <div>
-          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-            Loading projects from Dokploy…
-          </p>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            Waiting for the project and environment list.
-          </p>
-        </div>
-      </div>
-      <div className="mt-4 grid gap-2 sm:grid-cols-2">
-        <div className="h-20 animate-pulse rounded-md bg-gray-100 dark:bg-white/5" />
-        <div className="h-20 animate-pulse rounded-md bg-gray-100 dark:bg-white/5" />
-      </div>
-    </div>
-  );
-}
-
-async function ProjectsContent() {
-  const [projects, githubProviders, repositoryApplications, activeInstance] =
-    await Promise.all([
-      getDokployProjects(),
-      getDokployGithubProviders().catch(() => []),
-      getRepositoryApplicationsResult(),
-      getActiveDokployConfiguration(),
-    ]);
-  const unavailableComposeDefinitionIds =
-    getUnavailableComposeServiceDefinitionIds(projects);
-
-  return (
-    <>
-      {projects.length === 0 ? (
-        <div className="mt-4 rounded-lg border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500 dark:border-white/15 dark:text-gray-400">
-          No projects were returned by Dokploy.
-        </div>
-      ) : (
-        <div className="mt-4 columns-1 gap-4 lg:columns-2">
-          {projects.map((project) => (
-            <div key={project.projectId} className="mb-4 break-inside-avoid">
-              <ProjectCard
-                project={project}
-                linkServices
-                serviceActionsMenu
-                githubProviders={githubProviders}
-                repositoryApplications={repositoryApplications.applications}
-                repositoryApplicationsError={repositoryApplications.error}
-                rootDomain={activeInstance?.rootDomain ?? ""}
-                defaultServiceCredentials={{
-                  username: activeInstance?.defaultServiceUsername ?? "admin",
-                  password: activeInstance?.defaultServicePassword ?? "admin",
-                }}
-                unavailableComposeDefinitionIds={
-                  unavailableComposeDefinitionIds
-                }
-              />
-            </div>
-          ))}
+      {!zotRegistry && (
+        <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-200">
+          No Zot registry with an enabled domain was found on the active Dokploy
+          instance. Local builds are available, but pushing is disabled.
         </div>
       )}
-    </>
+
+      <div className="mt-5 grid gap-4 xl:grid-cols-2">
+        {projectInventories.map(({ project, localResult, zotResult }) => (
+          <ProjectImageCard
+            key={project.name}
+            project={project}
+            zotRegistryHost={zotRegistry?.host ?? ""}
+            localImages={localResult.images}
+            localImagesError={localResult.error}
+            zotImages={zotResult.images}
+            zotImagesError={zotResult.error}
+          />
+        ))}
+      </div>
+    </div>
   );
 }

@@ -11,6 +11,8 @@ export type DokployInstanceSummary = {
 };
 
 export type DokployInstanceConfiguration = DokployInstanceSummary & {
+  vpsIp: string;
+  vpsPassword: string;
   apiKey: string;
   defaultServiceUsername: string;
   defaultServicePassword: string;
@@ -21,6 +23,8 @@ type InstanceRow = {
   name: string;
   root_url: string;
   root_domain: string;
+  vps_ip: string;
+  vps_password: string;
   api_key: string;
   default_service_username: string;
   default_service_password: string;
@@ -43,6 +47,8 @@ function toSummary(row: InstanceSummaryRow): DokployInstanceSummary {
 function toConfiguration(row: InstanceRow): DokployInstanceConfiguration {
   return {
     ...toSummary(row),
+    vpsIp: row.vps_ip,
+    vpsPassword: row.vps_password,
     apiKey: row.api_key,
     defaultServiceUsername: row.default_service_username,
     defaultServicePassword: row.default_service_password,
@@ -76,7 +82,7 @@ export function getDokployInstance(
 ): DokployInstanceConfiguration | null {
   const row = getDatabase()
     .prepare(
-      `SELECT id, name, root_url, root_domain, api_key,
+      `SELECT id, name, root_url, root_domain, vps_ip, vps_password, api_key,
               default_service_username, default_service_password
        FROM dokploy_instances WHERE id = ?`,
     )
@@ -88,6 +94,8 @@ export function createDokployInstance(input: {
   name: string;
   rootUrl: string;
   rootDomain: string;
+  vpsIp?: string;
+  vpsPassword?: string;
   apiKey: string;
   defaultServiceUsername: string;
   defaultServicePassword: string;
@@ -97,15 +105,17 @@ export function createDokployInstance(input: {
   getDatabase()
     .prepare(
       `INSERT INTO dokploy_instances
-       (id, name, root_url, root_domain, api_key, default_service_username,
+       (id, name, root_url, root_domain, vps_ip, vps_password, api_key, default_service_username,
         default_service_password, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       id,
       input.name,
       input.rootUrl,
       input.rootDomain,
+      input.vpsIp ?? "",
+      input.vpsPassword ?? "",
       input.apiKey,
       input.defaultServiceUsername,
       input.defaultServicePassword,
@@ -126,6 +136,8 @@ export function updateDokployInstance(
     name: string;
     rootUrl: string;
     rootDomain: string;
+    vpsIp?: string;
+    vpsPassword?: string;
     apiKey: string;
     defaultServiceUsername: string;
     defaultServicePassword: string;
@@ -134,7 +146,7 @@ export function updateDokployInstance(
   const result = getDatabase()
     .prepare(
       `UPDATE dokploy_instances
-       SET name = ?, root_url = ?, root_domain = ?, api_key = ?,
+       SET name = ?, root_url = ?, root_domain = ?, vps_ip = ?, vps_password = ?, api_key = ?,
            default_service_username = ?, default_service_password = ?,
            updated_at = ?
        WHERE id = ?`,
@@ -143,6 +155,8 @@ export function updateDokployInstance(
       input.name,
       input.rootUrl,
       input.rootDomain,
+      input.vpsIp ?? "",
+      input.vpsPassword ?? "",
       input.apiKey,
       input.defaultServiceUsername,
       input.defaultServicePassword,

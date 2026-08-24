@@ -56,6 +56,36 @@ export async function verifyDokployConnection(configuration: {
   await dokployRequestWithConfiguration(configuration, "project.all");
 }
 
+export async function dokployGetWithConfiguration<T = unknown>(
+  configuration: { baseUrl: string; apiKey: string },
+  endpoint: string,
+): Promise<T> {
+  const response = await dokployRequestWithConfiguration(
+    configuration,
+    endpoint,
+  );
+  return response.json() as Promise<T>;
+}
+
+export async function dokployPostWithConfiguration<T = unknown>(
+  configuration: { baseUrl: string; apiKey: string },
+  endpoint: string,
+  body: unknown,
+): Promise<T> {
+  const response = await dokployRequestWithConfiguration(
+    configuration,
+    endpoint,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (response.status === 204) return undefined as T;
+  const text = await response.text();
+  return (text ? JSON.parse(text) : undefined) as T;
+}
+
 export async function dokployGet<T = unknown>(endpoint: string): Promise<T> {
   const response = await dokployRequest(endpoint);
   return response.json() as Promise<T>;

@@ -60,7 +60,6 @@ export function DokployInstanceSelector({
               return;
             }
             onNavigate?.();
-            router.push("/projects");
             router.refresh();
           });
         }}

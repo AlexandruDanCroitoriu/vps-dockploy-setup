@@ -16,12 +16,17 @@ export function RepositoryApplicationDropdown({
   applications,
   applicationsError,
   deployedApplications,
+  infraManagementImageAvailability,
   onSelect,
 }: {
   disabled: boolean;
   applications: RepositoryApplication[];
   applicationsError: string;
   deployedApplications: Array<{ name: string; sourcePath: string | null }>;
+  infraManagementImageAvailability: {
+    available: boolean;
+    message: string;
+  };
   onSelect: (application: RepositoryApplication) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -82,17 +87,25 @@ export function RepositoryApplicationDropdown({
                   deployedPaths.has(
                     normalizePath(application.path).toLowerCase(),
                   ) || deployedNames.has(application.name.toLowerCase());
+                const isInfraManagement =
+                  application.name.toLowerCase() === "01-infra-management";
+                const registryUnavailable =
+                  isInfraManagement &&
+                  !infraManagementImageAvailability.available;
+                const unavailable = deployed || registryUnavailable;
 
                 return (
                   <li key={application.path}>
                     <button
                       type="button"
                       onClick={() => select(application)}
-                      disabled={deployed}
+                      disabled={unavailable}
                       title={
                         deployed
                           ? "Already deployed in this project"
-                          : undefined
+                          : registryUnavailable
+                            ? infraManagementImageAvailability.message
+                            : undefined
                       }
                       className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent dark:hover:bg-indigo-500/10 dark:disabled:hover:bg-transparent"
                     >
@@ -104,10 +117,18 @@ export function RepositoryApplicationDropdown({
                         <span className="block truncate text-sm font-medium text-gray-800 dark:text-gray-200">
                           {application.name}
                         </span>
-                        <span className="block truncate text-xs text-gray-500 dark:text-gray-400">
+                        <span
+                          className={`block text-xs ${
+                            registryUnavailable
+                              ? "text-red-600 dark:text-red-400"
+                              : "truncate text-gray-500 dark:text-gray-400"
+                          }`}
+                        >
                           {deployed
                             ? "Already deployed"
-                            : `/${application.path}`}
+                            : registryUnavailable
+                              ? infraManagementImageAvailability.message
+                              : `/${application.path}`}
                         </span>
                       </span>
                     </button>

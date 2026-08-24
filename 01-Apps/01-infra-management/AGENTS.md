@@ -26,10 +26,14 @@ administrator, one application replica, and server-side access to Dokploy.
 
 - `app/(auth)/` contains the public login experience.
 - `app/(dashboard)/` contains authenticated pages and the dashboard shell.
-- `app/(dashboard)/projects/_actions/` contains authenticated Server Actions split
+- `app/(dashboard)/projects/` is a development-only view of local `01-Apps`
+  directories and may invoke the already-authenticated local Docker CLI to build
+  and push production images. Keep its route, navigation, and actions unavailable
+  outside development.
+- `app/(dashboard)/dokploy/_actions/` contains authenticated Server Actions split
   by projects, services, databases, and domains. Shared action state, authentication,
   and safe error conversion live in `shared.ts`.
-- `app/(dashboard)/projects/_components/` contains project UI grouped by feature.
+- `app/(dashboard)/dokploy/_components/` contains project UI grouped by feature.
   Keep route files small and compose them from these feature components.
 - `app/api/` contains route handlers. Every non-auth route must independently verify
   the session even though `proxy.ts` also protects it.

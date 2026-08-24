@@ -60,6 +60,7 @@ export function AddApplicationDialog({
   repositoryApplicationsError,
   rootDomain,
   deployedApplications,
+  infraManagementImageAvailability,
 }: {
   projectId: string;
   environments: Array<{ environmentId: string; name: string }>;
@@ -68,6 +69,10 @@ export function AddApplicationDialog({
   repositoryApplicationsError: string;
   rootDomain: string;
   deployedApplications: Array<{ name: string; sourcePath: string | null }>;
+  infraManagementImageAvailability: {
+    available: boolean;
+    message: string;
+  };
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedApplication, setSelectedApplication] =
@@ -178,6 +183,7 @@ export function AddApplicationDialog({
         applications={repositoryApplications}
         applicationsError={repositoryApplicationsError}
         deployedApplications={deployedApplications}
+        infraManagementImageAvailability={infraManagementImageAvailability}
         onSelect={selectApplication}
       />
 
@@ -188,7 +194,7 @@ export function AddApplicationDialog({
           title={`Deploy ${selectedApplication.name}`}
           description={
             usesInfraManagementDefaults
-              ? "Create the service with the repository defaults and configure its domain."
+              ? "Create the service from the latest image in Zot and configure its domain."
               : "Create the service and configure its source and build settings."
           }
           width={usesInfraManagementDefaults ? "compact" : "lg"}

@@ -1,0 +1,111 @@
+import { Suspense } from "react";
+
+import {
+  getActiveDokployConfiguration,
+  getDokployGithubProviders,
+  getDokployProjects,
+} from "@/lib/dokploy";
+import { getRepositoryApplicationsResult } from "@/lib/github/repository-applications";
+import { getUnavailableComposeServiceDefinitionIds } from "@/compose-services/registry";
+import { getInfraManagementZotImage } from "@/lib/zot/infra-management-image";
+
+import { ProjectCard } from "./_components/project/project-card";
+import { CreateProjectDialog } from "./_components/project/create-project-dialog";
+import { ReloadButton } from "./_components/reload-button";
+
+export default function DokployPage() {
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+          Dokploy
+        </h1>
+        <div className="flex items-center gap-2">
+          <ReloadButton />
+          <CreateProjectDialog />
+        </div>
+      </div>
+
+      <Suspense fallback={<ProjectsLoading />}>
+        <ProjectsContent />
+      </Suspense>
+    </div>
+  );
+}
+
+function ProjectsLoading() {
+  return (
+    <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-gray-800/40">
+      <div className="flex items-center gap-3">
+        <span className="size-3 animate-pulse rounded-full bg-indigo-500" />
+        <div>
+          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+            Loading projects from Dokploy…
+          </p>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            Waiting for the project and environment list.
+          </p>
+        </div>
+      </div>
+      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+        <div className="h-20 animate-pulse rounded-md bg-gray-100 dark:bg-white/5" />
+        <div className="h-20 animate-pulse rounded-md bg-gray-100 dark:bg-white/5" />
+      </div>
+    </div>
+  );
+}
+
+async function ProjectsContent() {
+  const [
+    projects,
+    githubProviders,
+    repositoryApplications,
+    activeInstance,
+    infraManagementImage,
+  ] = await Promise.all([
+    getDokployProjects(),
+    getDokployGithubProviders().catch(() => []),
+    getRepositoryApplicationsResult(),
+    getActiveDokployConfiguration(),
+    getInfraManagementZotImage(),
+  ]);
+  const unavailableComposeDefinitionIds =
+    getUnavailableComposeServiceDefinitionIds(projects);
+
+  return (
+    <>
+      {projects.length === 0 ? (
+        <div className="mt-4 rounded-lg border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500 dark:border-white/15 dark:text-gray-400">
+          No projects were returned by Dokploy.
+        </div>
+      ) : (
+        <div className="mt-4 columns-1 gap-4 lg:columns-2">
+          {projects.map((project) => (
+            <div key={project.projectId} className="mb-4 break-inside-avoid">
+              <ProjectCard
+                project={project}
+                linkServices
+                serviceActionsMenu
+                githubProviders={githubProviders}
+                repositoryApplications={repositoryApplications.applications}
+                repositoryApplicationsError={repositoryApplications.error}
+                infraManagementImageAvailability={{
+                  available: infraManagementImage.available,
+                  message: infraManagementImage.message,
+                }}
+                rootDomain={activeInstance?.rootDomain ?? ""}
+                defaultServiceCredentials={{
+                  username: activeInstance?.defaultServiceUsername ?? "admin",
+                  password: activeInstance?.defaultServicePassword ?? "admin",
+                }}
+                unavailableComposeDefinitionIds={
+                  unavailableComposeDefinitionIds
+                }
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}

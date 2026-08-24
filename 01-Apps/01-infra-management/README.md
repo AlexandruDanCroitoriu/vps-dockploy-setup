@@ -16,6 +16,10 @@ The Add application dropdown discovers directories under `01-Apps`; selecting on
 Copy `.env.example` to `.env.local` for local development and configure:
 
 - `ADMIN_USERNAME`: administrator login name
+- `infra_services_default_username`: default service and initial Dockploy
+  administrator email used for new instances
+- `infra_services_default_password`: default service, initial Dockploy
+  administrator, and root SSH password used for new instances
 - `ADMIN_PASSWORD_HASH`: bcrypt password hash with cost 12
 - `AUTH_SECRET`: stable random secret used to encrypt session JWTs
 - `NEXTAUTH_URL`: public application URL
@@ -60,6 +64,35 @@ npm run build
 
 Unit and component tests use Vitest and React Testing Library. Playwright starts a local test server for the login tests. Install its browser and Linux dependencies once with `npx playwright install --with-deps chromium`; connected Dokploy workflow tests run when `E2E_DOKPLOY=1`, `E2E_BASE_URL`, `E2E_USERNAME`, and `E2E_PASSWORD` are configured.
 
+### Local Docker image builds
+
+In local development, the authenticated `Projects` page lists directories under
+the repository's `01-Apps` folder. Projects with a `Dockerfile` can be built as
+production images and pushed to the Zot registry on the active Dokploy instance.
+
+1. Create and deploy the Zot service on the active Dokploy instance, with an
+   enabled HTTPS domain.
+2. Start the dashboard with `npm run dev`, open `Projects`, choose an image tag,
+   select `Build`, and then select `Push` when the build succeeds.
+
+Each project card lists locally built Docker tags and their creation dates next
+to the Zot repository's published tags. The newest Zot tag is marked current;
+older tags are shown as previous versions. Individual local and Zot tags can be
+deleted from their respective lists. Deleting the current image requires an
+explicit confirmation; previous versions are removed immediately.
+
+Before replacing `latest`, a build preserves the previous local image under one
+immutable `build-<UTC timestamp>` tag. The new image is tagged only as `latest`.
+Pushing publishes older local builds under their immutable tags before updating
+Zot's single `latest` tag, so each inventory contains one current image plus
+versions retained from earlier builds or pushes.
+
+Local images use `<project-name>:<tag>` and pushed images use
+`<zot-domain>/<project-name>:<tag>`; a leading numeric folder prefix such as
+`01-` is removed. Push authenticates with the active instance's stored default
+service credentials, which are also used when the Zot service is created. The
+page, navigation item, and actions are disabled outside development.
+
 ## Deploy with Dockploy
 
 This application is intended to be deployed from a locally running copy of
@@ -84,6 +117,27 @@ Infra Management using the repository application picker.
 Each configured Dockploy API URL must be reachable from the application
 container. API keys remain server-only and must never use a `NEXT_PUBLIC_`
 prefix.
+
+### Bootstrap a new VPS
+
+The Add Dockploy instance form can provision a new Ubuntu or Debian VPS. Create
+the Cloudflare DNS record for `dockploy.<root-domain>` first, then leave the
+API/CLI key empty. The local server uses the default service password for root
+SSH, resolves the VPS IP from the domain,
+updates installed APT packages, installs Dokploy with the official installer,
+creates the first Dokploy administrator using the default service credentials,
+assigns the HTTPS domain, generates an API/CLI key, and stores the verified
+instance.
+
+Use an email address for the default service username during provisioning.
+Password SSH must be enabled for `root`. The VPS IP and default service password are stored
+in the secret-bearing instance configuration in SQLite for future server
+operations. If the IP is omitted, the application resolves
+`dockploy.<root-domain>` and stores the resulting address; use a DNS-only
+Cloudflare record so this resolves to the origin VPS rather than a Cloudflare
+edge. Provisioning can take several minutes and may fail when ports 80, 443,
+or 3000 are already occupied, the DNS record has not propagated, or the server
+requires a reboot to finish package upgrades.
 
 ## Security and troubleshooting
 

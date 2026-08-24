@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { ACTIVE_DOKPLOY_COOKIE, verifyDokployConnection } from "@/lib/dokploy";
 import {
   createDokployInstance,
@@ -12,11 +14,13 @@ import {
   normalizeRootDomain,
   updateDokployInstance,
 } from "@/lib/storage/dokploy-instances";
+import { bootstrapDokployVps } from "@/lib/vps/bootstrap-dokploy";
+import { getDokployProvisioningJob } from "@/lib/storage/dokploy-provisioning";
 import {
   requireAuthenticatedSession,
   SESSION_EXPIRED_STATE,
   type ActionState,
-} from "../projects/_actions/shared";
+} from "../dokploy/_actions/shared";
 
 type ParsedInstanceForm = {
   name: string;
@@ -27,9 +31,42 @@ type ParsedInstanceForm = {
   defaultServicePassword: string;
 };
 
+async function resolveVpsIp(rootDomain: string) {
+  try {
+    return (await lookup(`dockploy.${rootDomain}`)).address;
+  } catch {
+    throw new Error(
+      `Unable to resolve dockploy.${rootDomain} to a VPS IP address.`,
+    );
+  }
+}
+
+export async function resolveDokployVpsIpAction(rootDomain: string) {
+  if (!(await requireAuthenticatedSession())) {
+    return { status: "error" as const, message: SESSION_EXPIRED_STATE.message };
+  }
+
+  try {
+    const normalizedDomain = normalizeRootDomain(rootDomain);
+    return {
+      status: "success" as const,
+      ipAddress: await resolveVpsIp(normalizedDomain),
+    };
+  } catch (error) {
+    return {
+      status: "error" as const,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Unable to resolve the Dockploy domain.",
+    };
+  }
+}
+
 function parseInstanceForm(
   formData: FormData,
   existingApiKey = "",
+  allowMissingApiKey = false,
 ): ParsedInstanceForm | ActionState {
   const name = formData.get("name")?.toString().trim() ?? "";
   const submittedApiKey = formData.get("apiKey")?.toString().trim() ?? "";
@@ -43,7 +80,7 @@ function parseInstanceForm(
   if (!name || name.length > 100) {
     return { status: "error", message: "Enter a name up to 100 characters." };
   }
-  if (!apiKey || submittedApiKey.length > 4096) {
+  if ((!apiKey && !allowMissingApiKey) || submittedApiKey.length > 4096) {
     return { status: "error", message: "Enter a valid API/CLI key." };
   }
   if (
@@ -83,16 +120,48 @@ export async function createDokployInstanceAction(
   void previousState;
   if (!(await requireAuthenticatedSession())) return SESSION_EXPIRED_STATE;
 
-  const parsed = parseInstanceForm(formData);
+  const submittedIpAddress = formData.get("ipAddress")?.toString().trim() ?? "";
+  const submittedApiKey = formData.get("apiKey")?.toString().trim() ?? "";
+  const bootstrapRequested = !submittedApiKey;
+  const parsed = parseInstanceForm(formData, "", bootstrapRequested);
   if ("status" in parsed) return parsed;
 
+  if (submittedIpAddress && !isIP(submittedIpAddress)) {
+    return { status: "error", message: "Enter a valid VPS IP address." };
+  }
+  if (
+    bootstrapRequested &&
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(parsed.defaultServiceUsername)
+  ) {
+    return {
+      status: "error",
+      message:
+        "For VPS setup, the default service username must be a valid email address for the Dokploy administrator.",
+    };
+  }
+
   try {
+    const ipAddress =
+      submittedIpAddress || (await resolveVpsIp(parsed.rootDomain));
+    const bootstrapped = bootstrapRequested
+      ? await bootstrapDokployVps({
+          ipAddress,
+          rootDomain: parsed.rootDomain,
+          administratorEmail: parsed.defaultServiceUsername,
+          administratorPassword: parsed.defaultServicePassword,
+          vpsPassword: parsed.defaultServicePassword,
+        })
+      : null;
+    const apiKey = bootstrapped?.apiKey ?? parsed.apiKey;
     await verifyDokployConnection({
       baseUrl: parsed.rootUrl,
-      apiKey: parsed.apiKey,
+      apiKey,
     });
     const instance = createDokployInstance({
       ...parsed,
+      apiKey,
+      vpsIp: ipAddress,
+      vpsPassword: parsed.defaultServicePassword,
     });
     (await cookies()).set(ACTIVE_DOKPLOY_COOKIE, instance.id, {
       httpOnly: true,
@@ -112,7 +181,10 @@ export async function createDokployInstanceAction(
     }
     return {
       status: "error",
-      message: "Unable to connect to Dockploy with that URL and API/CLI key.",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Unable to connect to Dockploy with that URL and API/CLI key.",
     };
   }
 }
@@ -120,13 +192,14 @@ export async function createDokployInstanceAction(
 export async function selectDokployInstanceAction(instanceId: string) {
   if (!(await requireAuthenticatedSession())) return SESSION_EXPIRED_STATE;
   const instance = getDokployInstance(instanceId);
-  if (!instance) {
+  const provisioningJob = getDokployProvisioningJob(instanceId);
+  if (!instance && !provisioningJob) {
     return {
       status: "error",
       message: "Dockploy instance not found.",
     } as ActionState;
   }
-  (await cookies()).set(ACTIVE_DOKPLOY_COOKIE, instance.id, {
+  (await cookies()).set(ACTIVE_DOKPLOY_COOKIE, instance?.id ?? provisioningJob!.id, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
@@ -197,14 +270,21 @@ export async function updateDokployInstanceAction(
   }
   const parsed = parseInstanceForm(formData, current.apiKey);
   if ("status" in parsed) return parsed;
+  const submittedVpsIp = formData.get("ipAddress")?.toString().trim() ?? "";
+  if (submittedVpsIp && !isIP(submittedVpsIp)) {
+    return { status: "error", message: "Enter a valid VPS IP address." };
+  }
 
   try {
+    const vpsIp = submittedVpsIp || (await resolveVpsIp(parsed.rootDomain));
     await verifyDokployConnection({
       baseUrl: parsed.rootUrl,
       apiKey: parsed.apiKey,
     });
     const updated = updateDokployInstance(instanceId, {
       ...parsed,
+      vpsIp,
+      vpsPassword: parsed.defaultServicePassword,
     });
     if (!updated) {
       return { status: "error", message: "Dockploy instance not found." };

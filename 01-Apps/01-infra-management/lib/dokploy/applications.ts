@@ -43,6 +43,22 @@ export type CreateDokployGithubApplicationInput = {
   };
 };
 
+export type CreateDokployDockerApplicationInput = {
+  name: string;
+  description?: string;
+  environmentId: string;
+  image: string;
+  registryUrl: string;
+  registryUsername: string;
+  registryPassword: string;
+  environmentVariables?: string;
+  domain?: {
+    host: string;
+    port: number;
+    https: boolean;
+  };
+};
+
 export async function getDokployGithubProviders(): Promise<
   DokployGithubProvider[]
 > {
@@ -67,6 +83,56 @@ function applicationIdFromPayload(payload: unknown) {
   const candidate =
     isRecord(payload) && isRecord(payload.data) ? payload.data : payload;
   return isRecord(candidate) ? stringValue(candidate.applicationId) : "";
+}
+
+export async function createDokployDockerApplication(
+  input: CreateDokployDockerApplicationInput,
+) {
+  const created = await dokployPost<unknown>("application.create", {
+    name: input.name,
+    appName: input.name,
+    ...(input.description ? { description: input.description } : {}),
+    environmentId: input.environmentId,
+    sourceType: "docker",
+  });
+  const applicationId = applicationIdFromPayload(created);
+  if (!applicationId) {
+    throw new Error("Dokploy did not return the new application ID.");
+  }
+
+  try {
+    await dokployPost("application.saveDockerProvider", {
+      applicationId,
+      dockerImage: input.image,
+      registryUrl: input.registryUrl,
+      username: input.registryUsername,
+      password: input.registryPassword,
+    });
+    if (input.environmentVariables) {
+      await dokployPost("application.saveEnvironment", {
+        applicationId,
+        env: input.environmentVariables,
+        buildArgs: null,
+        buildSecrets: null,
+        createEnvFile: false,
+      });
+    }
+    if (input.domain) {
+      await createDokployDomain({
+        type: "applications",
+        serviceId: applicationId,
+        serviceName: input.name,
+        host: input.domain.host,
+        port: input.domain.port,
+        https: input.domain.https,
+        letsEncrypt: input.domain.https,
+      });
+    }
+    return applicationId;
+  } catch (error) {
+    await dokployPost("application.delete", { applicationId }).catch(() => {});
+    throw error;
+  }
 }
 
 export async function createDokployGithubApplication(
@@ -137,6 +203,9 @@ export async function createDokployGithubApplication(
       await dokployPost("application.saveEnvironment", {
         applicationId,
         env: input.environmentVariables,
+        buildArgs: null,
+        buildSecrets: null,
+        createEnvFile: false,
       });
     }
     if (input.domain) {

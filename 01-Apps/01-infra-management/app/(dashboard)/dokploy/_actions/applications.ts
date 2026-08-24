@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { randomBytes } from "node:crypto";
 import {
+  createDokployDockerApplication,
   createDokployGithubApplication,
   DOKPLOY_APPLICATION_BUILD_TYPES,
   generateDokployDomain,
@@ -12,6 +13,7 @@ import {
   isValidPort,
   type DokployApplicationBuildType,
 } from "@/lib/dokploy";
+import { getInfraManagementZotImage } from "@/lib/zot/infra-management-image";
 import {
   deployAfterCreateRequested,
   getActionError,
@@ -25,6 +27,18 @@ const APP_NAME_PATTERN = /^[a-zA-Z0-9._-]+$/;
 const BRANCH_PATTERN = /^[a-zA-Z0-9._\-/#]+$/;
 const REPOSITORY_PART_PATTERN = /^[a-zA-Z0-9._-]+$/;
 const INFRA_MANAGEMENT_PATH = "/01-Apps/01-infra-management";
+
+function isInfraManagementApplication(input: {
+  owner: string;
+  repository: string;
+  buildPath: string;
+}) {
+  return (
+    input.owner === "AlexandruDanCroitoriu" &&
+    input.repository === "vps-dockploy-setup" &&
+    input.buildPath === INFRA_MANAGEMENT_PATH
+  );
+}
 
 function field(formData: FormData, name: string) {
   return formData.get(name)?.toString().trim() ?? "";
@@ -40,11 +54,7 @@ async function getInfraManagementEnvironment(input: {
   buildPath: string;
   host: string;
 }) {
-  if (
-    input.owner !== "AlexandruDanCroitoriu" ||
-    input.repository !== "vps-dockploy-setup" ||
-    input.buildPath !== INFRA_MANAGEMENT_PATH
-  ) {
+  if (!isInfraManagementApplication(input)) {
     return undefined;
   }
 
@@ -175,37 +185,56 @@ export async function createApplicationAction(
       buildPath,
       host,
     });
-    const applicationId = await createDokployGithubApplication({
-      name,
-      description,
-      environmentId,
-      githubId: githubId || undefined,
+    const domain = host
+      ? {
+          host,
+          port,
+          https: formData.get("https") === "on",
+        }
+      : undefined;
+    const applicationId = isInfraManagementApplication({
       owner,
       repository,
-      branch,
       buildPath,
-      watchPaths,
-      buildType,
-      dockerfile,
-      dockerContextPath,
-      publishDirectory,
-      isStaticSpa: formData.get("isStaticSpa") === "on",
-      autoDeploy: formData.get("autoDeploy") === "on",
-      environmentVariables,
-      ...(host
-        ? {
-            domain: {
-              host,
-              port,
-              https: formData.get("https") === "on",
-            },
-          }
-        : {}),
-    });
+    })
+      ? await (async () => {
+          const zotImage = await getInfraManagementZotImage();
+          if (!zotImage.available) throw new Error(zotImage.message);
+          return createDokployDockerApplication({
+            name,
+            description,
+            environmentId,
+            image: zotImage.image,
+            registryUrl: zotImage.registry.host,
+            registryUsername: zotImage.registry.username,
+            registryPassword: zotImage.registry.password,
+            environmentVariables,
+            domain,
+          });
+        })()
+      : await createDokployGithubApplication({
+          name,
+          description,
+          environmentId,
+          githubId: githubId || undefined,
+          owner,
+          repository,
+          branch,
+          buildPath,
+          watchPaths,
+          buildType,
+          dockerfile,
+          dockerContextPath,
+          publishDirectory,
+          isStaticSpa: formData.get("isStaticSpa") === "on",
+          autoDeploy: formData.get("autoDeploy") === "on",
+          environmentVariables,
+          domain,
+        });
     if (deployAfterCreate) {
       if (!(await startInitialDeployment("applications", applicationId))) {
-        revalidatePath("/projects");
-        revalidatePath(`/projects/${projectId}`);
+        revalidatePath("/dokploy");
+        revalidatePath(`/dokploy/${projectId}`);
         return {
           status: "error",
           message:
@@ -214,8 +243,8 @@ export async function createApplicationAction(
         };
       }
     }
-    revalidatePath("/projects");
-    revalidatePath(`/projects/${projectId}`);
+    revalidatePath("/dokploy");
+    revalidatePath(`/dokploy/${projectId}`);
     return {
       status: "success",
       message: deployAfterCreate
