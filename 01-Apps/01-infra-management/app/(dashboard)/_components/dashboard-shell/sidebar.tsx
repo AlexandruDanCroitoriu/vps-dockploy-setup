@@ -3,7 +3,7 @@
 import { CloudIcon, FolderIcon } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { SidebarProject } from "./dashboard-shell";
+import type { SidebarProject } from "@/lib/dokploy/sidebar-project-types";
 import type { DokployInstanceSummary } from "@/lib/storage/dokploy-instances";
 import { DokployInstanceSelector } from "./dokploy-instance-selector";
 import { SidebarProjectTree } from "./sidebar-project-tree";
@@ -25,6 +25,7 @@ export function Sidebar({
   instances,
   activeInstanceId,
   dokployAvailable,
+  dokployRootUrl,
   userName,
   onNavigate,
 }: {
@@ -33,6 +34,7 @@ export function Sidebar({
   instances: DokployInstanceSummary[];
   activeInstanceId: string | null;
   dokployAvailable: boolean;
+  dokployRootUrl: string;
   userName: string;
   onNavigate?: () => void;
 }) {
@@ -100,6 +102,7 @@ export function Sidebar({
                 projects={projects}
                 error={projectsError}
                 pathname={pathname}
+                dokployRootUrl={dokployRootUrl}
                 onNavigate={onNavigate}
               />
             </li>

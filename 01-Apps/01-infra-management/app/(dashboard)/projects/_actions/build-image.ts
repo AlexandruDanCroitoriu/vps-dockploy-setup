@@ -20,6 +20,7 @@ import { getActiveZotRegistry } from "@/lib/zot/active-registry";
 import {
   deleteZotRegistryImage,
   getZotRegistryImages,
+  invalidateZotRegistryMemoryState,
 } from "@/lib/zot/registry-images";
 
 export type BuildImageState = {
@@ -221,6 +222,7 @@ export async function pushProjectImageAction(
       username: registry.username,
       password: registry.password,
     });
+    invalidateZotRegistryMemoryState(registry.host);
     return {
       status: "success",
       message: `Pushed ${result.image}.`,

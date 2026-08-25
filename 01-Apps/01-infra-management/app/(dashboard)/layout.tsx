@@ -5,15 +5,13 @@ import {
   getActiveDokployInstanceId,
   getActiveDokployProvisioningJob,
   getDokployInstanceSummaries,
-  getDokployProjects,
   getServiceTypeLabel,
   isDatabaseService,
 } from "@/lib/dokploy";
+import type { SidebarProject } from "@/lib/dokploy/sidebar-project-types";
+import { readSidebarProjectSnapshot } from "@/lib/dokploy/sidebar-project-snapshot";
 import { getDokployInstanceSummary } from "@/lib/storage/dokploy-instances";
-import {
-  DashboardShell,
-  type SidebarProject,
-} from "./_components/dashboard-shell/dashboard-shell";
+import { DashboardShell } from "./_components/dashboard-shell/dashboard-shell";
 
 export default async function DashboardLayout({
   children,
@@ -56,15 +54,11 @@ export default async function DashboardLayout({
   const instances = provisioningSummary
     ? [...storedInstances, provisioningSummary]
     : storedInstances;
-  const [session, result] = await Promise.all([
-    getServerSession(authOptions),
-    dokployReady
-      ? getDokployProjects().then(
-          (projects) => ({ projects, error: "" }),
-          () => ({ projects: [], error: "Unable to load projects." }),
-        )
-      : Promise.resolve({ projects: [], error: "" }),
-  ]);
+  const session = await getServerSession(authOptions);
+  const result =
+    dokployReady && activeInstance
+      ? readSidebarProjectSnapshot(activeInstance.id)
+      : { projects: [], error: "" };
   const projects: SidebarProject[] = result.projects.map(
     ({ projectId, name, environments }) => ({
       projectId,
@@ -76,6 +70,7 @@ export default async function DashboardLayout({
           name: isDatabaseService(service.type)
             ? getServiceTypeLabel(service.type)
             : service.name,
+          environmentId: environment.environmentId,
         })),
       ),
     }),
@@ -88,6 +83,7 @@ export default async function DashboardLayout({
       instances={instances}
       activeInstanceId={activeInstance?.id ?? activeInstanceId}
       dokployAvailable={dokployReady}
+      dokployRootUrl={activeInstance?.rootUrl ?? ""}
       userName={session?.user?.name || "Administrator"}
     >
       {children}

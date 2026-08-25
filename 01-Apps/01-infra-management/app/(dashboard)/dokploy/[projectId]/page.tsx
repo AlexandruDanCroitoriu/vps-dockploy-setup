@@ -5,9 +5,11 @@ import { Suspense } from "react";
 import {
   getActiveDokployConfiguration,
   getDokployGithubProviders,
-  getDokployProject,
-  getDokployProjects,
 } from "@/lib/dokploy";
+import {
+  getActiveDokployProjectFromSnapshot,
+  getActiveDokployProjectSnapshot,
+} from "@/lib/dokploy/sidebar-project-snapshot";
 import { getUnavailableComposeServiceDefinitionIds } from "@/compose-services/registry";
 import { getRepositoryApplicationsResult } from "@/lib/github/repository-applications";
 import { getInfraManagementZotImage } from "@/lib/zot/infra-management-image";
@@ -41,8 +43,8 @@ async function ProjectContent({
     activeInstance,
     infraManagementImage,
   ] = await Promise.all([
-    getDokployProject(projectId),
-    getDokployProjects(),
+    getActiveDokployProjectFromSnapshot(projectId),
+    getActiveDokployProjectSnapshot(),
     getDokployGithubProviders().catch(() => []),
     getRepositoryApplicationsResult(),
     getActiveDokployConfiguration(),

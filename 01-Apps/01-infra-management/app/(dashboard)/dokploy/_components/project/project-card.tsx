@@ -3,8 +3,6 @@ import Link from "next/link";
 import { Suspense } from "react";
 
 import {
-  getDokployDomains,
-  getDokployServiceStatus,
   getServiceTypeLabel,
   isDatabaseService,
   shouldPollDokployServiceStatus,
@@ -12,6 +10,7 @@ import {
   type DokployGithubProvider,
   type DokployService,
 } from "@/lib/dokploy";
+import { getServicePresentationSnapshot } from "@/lib/dokploy/service-presentation-snapshot";
 import { composeServiceOptions } from "@/compose-services/registry";
 import type { RepositoryApplication } from "@/lib/github/repository-applications";
 
@@ -235,21 +234,11 @@ async function ProjectServices({
   linkServices: boolean;
   serviceActionsMenu: boolean;
 }) {
-  const [statusResults, domainResults] = await Promise.all([
-    Promise.allSettled(services.map(getDokployServiceStatus)),
-    Promise.allSettled(
-      services.map((service) =>
-        service.type === "applications" || service.type === "compose"
-          ? getDokployDomains(service.type, service.id)
-          : Promise.resolve([]),
-      ),
-    ),
-  ]);
-  const resolvedServices = services.map((service, index) =>
-    statusResults[index].status === "fulfilled"
-      ? statusResults[index].value
-      : service,
+  const presentation = await getServicePresentationSnapshot(
+    projectId,
+    services,
   );
+  const resolvedServices = presentation.services;
 
   return (
     <>
@@ -268,11 +257,7 @@ async function ProjectServices({
             <OptimisticServiceVisibilityGuard service={service}>
               <ServiceCard
                 service={service}
-                domains={
-                  domainResults[index].status === "fulfilled"
-                    ? domainResults[index].value
-                    : []
-                }
+                domains={presentation.domains[index] ?? []}
                 projectId={projectId}
                 serviceActionsMenu={serviceActionsMenu}
                 href={

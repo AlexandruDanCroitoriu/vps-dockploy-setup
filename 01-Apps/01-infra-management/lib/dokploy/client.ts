@@ -2,6 +2,11 @@ import "server-only";
 
 import { DokployApiError } from "./errors";
 import { getActiveDokployConfiguration } from "./active-instance";
+import { clearDokployRenderSnapshots } from "./render-snapshot-cache";
+import {
+  getExternalRequestSnapshot,
+  invalidateDokployMemoryState,
+} from "./instance-memory-state";
 
 export class NoActiveDokployInstanceError extends Error {
   constructor() {
@@ -16,17 +21,35 @@ export async function dokployRequestWithConfiguration(
   init?: RequestInit,
 ) {
   const { baseUrl, apiKey } = configuration;
-  const response = await fetch(`${baseUrl}/api/${endpoint}`, {
-    ...init,
-    headers: {
-      accept: "application/json",
-      "x-api-key": apiKey,
-      ...init?.headers,
-    },
-    cache: "no-store",
-  });
+  const method = init?.method?.toUpperCase() ?? "GET";
+  const requestUrl = `${baseUrl}/api/${endpoint}`;
+  const displayUrl = getSafeDokployRequestUrl(requestUrl);
+  const startedAt = performance.now();
+
+  console.info(`[Dokploy] → ${method} ${displayUrl}`);
+
+  let response: Response;
+  try {
+    response = await fetch(requestUrl, {
+      ...init,
+      headers: {
+        accept: "application/json",
+        "x-api-key": apiKey,
+        ...init?.headers,
+      },
+      cache: "no-store",
+    });
+  } catch (error) {
+    console.info(
+      `[Dokploy] ✕ ${method} ${displayUrl} transport-error ${formatDuration(startedAt)}`,
+    );
+    throw error;
+  }
+
+  const requestSummary = `${method} ${displayUrl} ${response.status} ${formatDuration(startedAt)}`;
 
   if (!response.ok) {
+    console.info(`[Dokploy] ✕ ${requestSummary}`);
     const details = await response.text().catch(() => "");
     throw new DokployApiError(
       `Dokploy request failed (${response.status}).`,
@@ -36,7 +59,22 @@ export async function dokployRequestWithConfiguration(
     );
   }
 
+  console.info(`[Dokploy] ✓ ${requestSummary}`);
   return response;
+}
+
+function formatDuration(startedAt: number) {
+  return `${Math.round(performance.now() - startedAt)}ms`;
+}
+
+function getSafeDokployRequestUrl(requestUrl: string) {
+  const url = new URL(requestUrl);
+  for (const key of url.searchParams.keys()) {
+    if (/(?:api.?key|token|password|secret|credential)/i.test(key)) {
+      url.searchParams.set(key, "[redacted]");
+    }
+  }
+  return url.toString();
 }
 
 export async function dokployRequest(endpoint: string, init?: RequestInit) {
@@ -97,8 +135,12 @@ export async function dokployPostWithConfiguration<T = unknown>(
 }
 
 export async function dokployGet<T = unknown>(endpoint: string): Promise<T> {
-  const response = await dokployRequest(endpoint);
-  return response.json() as Promise<T>;
+  const instance = await getActiveDokployConfiguration();
+  if (!instance) throw new NoActiveDokployInstanceError();
+  return getExternalRequestSnapshot(instance.id, endpoint, async () => {
+    const response = await dokployRequest(endpoint);
+    return response.json() as Promise<T>;
+  });
 }
 
 export async function dokployPost<T = unknown>(
@@ -111,6 +153,11 @@ export async function dokployPost<T = unknown>(
     body: JSON.stringify(body),
   });
 
+  const instance = await getActiveDokployConfiguration();
+  if (instance) {
+    invalidateDokployMemoryState(instance.id);
+    clearDokployRenderSnapshots(instance.id);
+  }
   if (response.status === 204) return undefined as T;
   const text = await response.text();
   return (text ? JSON.parse(text) : undefined) as T;

@@ -1,20 +1,24 @@
 "use client";
 
 import { ArrowPathIcon } from "@heroicons/react/24/outline";
-import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
+import { refreshDokployDataAction } from "../_actions/refresh";
 
 export function ReloadButton({ label = "Reload" }: { label?: string }) {
-  const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
   return (
     <Button
       type="button"
       variant="secondary"
-      onClick={() => startTransition(() => router.refresh())}
+      onClick={() =>
+        startTransition(async () => {
+          await refreshDokployDataAction();
+          void fetch("/api/dokploy/warm", { method: "POST" });
+        })
+      }
       disabled={isPending}
       aria-label={isPending ? "Reloading" : label}
       className="inline-flex items-center gap-1.5"

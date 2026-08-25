@@ -4,15 +4,13 @@ import { Dialog, DialogBackdrop, DialogPanel } from "@headlessui/react";
 import { Bars3Icon, XMarkIcon } from "@heroicons/react/24/outline";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import type {
+  SidebarProject,
+  SidebarProjectsPayload,
+} from "@/lib/dokploy/sidebar-project-types";
 import { PROJECTS_CHANGED_EVENT } from "@/lib/project-events";
 import type { DokployInstanceSummary } from "@/lib/storage/dokploy-instances";
 import { Sidebar } from "./sidebar";
-
-export type SidebarProject = {
-  projectId: string;
-  name: string;
-  services: Array<{ id: string; type: string; name: string }>;
-};
 
 export function DashboardShell({
   children,
@@ -21,6 +19,7 @@ export function DashboardShell({
   instances,
   activeInstanceId,
   dokployAvailable,
+  dokployRootUrl,
   userName,
 }: {
   children: React.ReactNode;
@@ -29,6 +28,7 @@ export function DashboardShell({
   instances: DokployInstanceSummary[];
   activeInstanceId: string | null;
   dokployAvailable: boolean;
+  dokployRootUrl: string;
   userName: string;
 }) {
   const pathname = usePathname();
@@ -37,31 +37,50 @@ export function DashboardShell({
   const [projectsError, setProjectsError] = useState(initialProjectsError);
 
   useEffect(() => {
+    if (!dokployAvailable) return;
+
     let controller: AbortController | null = null;
-    async function reloadProjects() {
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+    let warmStarted = false;
+    async function reloadProjects(forceRefresh = false) {
       controller?.abort();
       controller = new AbortController();
       try {
-        const response = await fetch("/api/dokploy/projects", {
-          signal: controller.signal,
-        });
+        const response = await fetch(
+          `/api/dokploy/projects${forceRefresh ? "?refresh=1" : ""}`,
+          {
+            signal: controller.signal,
+          },
+        );
         if (!response.ok) throw new Error();
         const payload: unknown = await response.json();
-        if (!isSidebarProjects(payload)) throw new Error();
-        setProjects(payload);
-        setProjectsError("");
+        if (!isSidebarProjectsPayload(payload)) throw new Error();
+        setProjects(payload.projects);
+        setProjectsError(payload.error);
+        if (!forceRefresh && !warmStarted) {
+          warmStarted = true;
+          void fetch("/api/dokploy/warm", { method: "POST" });
+        }
+        if (payload.refreshing) {
+          pollTimer = setTimeout(() => void reloadProjects(), 500);
+        }
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError")
           return;
         setProjectsError("Unable to load projects.");
       }
     }
-    window.addEventListener(PROJECTS_CHANGED_EVENT, reloadProjects);
+    function handleProjectsChanged() {
+      void reloadProjects(true);
+    }
+    void reloadProjects();
+    window.addEventListener(PROJECTS_CHANGED_EVENT, handleProjectsChanged);
     return () => {
       controller?.abort();
-      window.removeEventListener(PROJECTS_CHANGED_EVENT, reloadProjects);
+      if (pollTimer) clearTimeout(pollTimer);
+      window.removeEventListener(PROJECTS_CHANGED_EVENT, handleProjectsChanged);
     };
-  }, []);
+  }, [activeInstanceId, dokployAvailable]);
 
   return (
     <div className="min-h-screen bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-300">
@@ -87,6 +106,7 @@ export function DashboardShell({
               instances={instances}
               activeInstanceId={activeInstanceId}
               dokployAvailable={dokployAvailable}
+              dokployRootUrl={dokployRootUrl}
               userName={userName}
               onNavigate={() => setSidebarOpen(false)}
             />
@@ -100,6 +120,7 @@ export function DashboardShell({
           instances={instances}
           activeInstanceId={activeInstanceId}
           dokployAvailable={dokployAvailable}
+          dokployRootUrl={dokployRootUrl}
           userName={userName}
         />
       </div>
@@ -126,10 +147,15 @@ export function DashboardShell({
   );
 }
 
-function isSidebarProjects(value: unknown): value is SidebarProject[] {
+function isSidebarProjectsPayload(
+  value: unknown,
+): value is SidebarProjectsPayload {
   return (
-    Array.isArray(value) &&
-    value.every(
+    typeof value === "object" &&
+    value !== null &&
+    "projects" in value &&
+    Array.isArray(value.projects) &&
+    value.projects.every(
       (project) =>
         typeof project === "object" &&
         project !== null &&
@@ -138,7 +164,18 @@ function isSidebarProjects(value: unknown): value is SidebarProject[] {
         "name" in project &&
         typeof project.name === "string" &&
         "services" in project &&
-        Array.isArray(project.services),
-    )
+        Array.isArray(project.services) &&
+        project.services.every(
+          (service: unknown) =>
+            typeof service === "object" &&
+            service !== null &&
+            "environmentId" in service &&
+            typeof service.environmentId === "string",
+        ),
+    ) &&
+    "refreshing" in value &&
+    typeof value.refreshing === "boolean" &&
+    "error" in value &&
+    typeof value.error === "string"
   );
 }

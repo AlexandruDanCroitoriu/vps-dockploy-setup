@@ -1,6 +1,10 @@
 import "server-only";
 
 import type { ActiveZotRegistry } from "./active-registry";
+import {
+  getExternalRequestSnapshot,
+  invalidateDokployMemoryState,
+} from "@/lib/dokploy/instance-memory-state";
 
 export type ZotRegistryImage = {
   name: string;
@@ -99,25 +103,34 @@ export async function getZotRegistryImages(
   registry: ActiveZotRegistry,
   repository: string,
 ) {
-  const response = await fetch(`https://${registry.host}/v2/_zot/ext/search`, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${Buffer.from(`${registry.username}:${registry.password}`).toString("base64")}`,
-      "Content-Type": "application/json",
+  return getExternalRequestSnapshot(
+    getZotMemoryId(registry.host),
+    `images:${repository}`,
+    async () => {
+      const response = await fetch(
+        `https://${registry.host}/v2/_zot/ext/search`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Basic ${Buffer.from(`${registry.username}:${registry.password}`).toString("base64")}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            query: imageListQuery,
+            variables: { repository },
+          }),
+          cache: "no-store",
+        },
+      );
+      const payload = (await response
+        .json()
+        .catch(() => null)) as ZotImageListResponse | null;
+      if (!response.ok || !payload || payload.errors?.length) {
+        throw new Error("Unable to load images from Zot.");
+      }
+      return normalizeZotRegistryImages(payload);
     },
-    body: JSON.stringify({
-      query: imageListQuery,
-      variables: { repository },
-    }),
-    cache: "no-store",
-  });
-  const payload = (await response
-    .json()
-    .catch(() => null)) as ZotImageListResponse | null;
-  if (!response.ok || !payload || payload.errors?.length) {
-    throw new Error("Unable to load images from Zot.");
-  }
-  return normalizeZotRegistryImages(payload);
+  );
 }
 
 export async function deleteZotRegistryImage(
@@ -147,4 +160,13 @@ export async function deleteZotRegistryImage(
         : `Zot rejected ${repository}:${reference} with HTTP ${response.status}.`,
     );
   }
+  invalidateZotRegistryMemoryState(registry.host);
+}
+
+export function invalidateZotRegistryMemoryState(host: string) {
+  invalidateDokployMemoryState(getZotMemoryId(host));
+}
+
+function getZotMemoryId(host: string) {
+  return `zot:${host}`;
 }

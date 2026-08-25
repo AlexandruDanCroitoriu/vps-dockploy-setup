@@ -7,12 +7,11 @@ import {
   getDokployDomainServiceNames,
   getDokployDomains,
   getDokployRunningContainerOptions,
-  getDokployProject,
   getDokployRawComposeFile,
-  getDokployService,
   getDokployServiceStatus,
   type DokployServiceType,
 } from "@/lib/dokploy";
+import { getActiveDokployProjectFromSnapshot } from "@/lib/dokploy/sidebar-project-snapshot";
 
 import {
   getServiceDisplayName,
@@ -57,10 +56,13 @@ async function ServiceContent({
   }
 
   const type = serviceType as DokployServiceType;
-  const [project, service] = await Promise.all([
-    getDokployProject(projectId),
-    getDokployService(projectId, type, serviceId),
-  ]);
+  const project = await getActiveDokployProjectFromSnapshot(projectId);
+  const service =
+    project?.environments
+      .flatMap((environment) => environment.services)
+      .find(
+        (candidate) => candidate.id === serviceId && candidate.type === type,
+      ) ?? null;
 
   if (!project || !service) notFound();
 
