@@ -10,7 +10,10 @@ import {
   dokployGetWithConfiguration,
   dokployPostWithConfiguration,
 } from "./client";
-import { ensureDokployZotRegistry } from "./bootstrap-zot";
+import {
+  deployDokployZotRegistry,
+  ensureDokployMainProject,
+} from "./bootstrap-zot";
 
 const configuration = {
   baseUrl: "https://dockploy.example.com",
@@ -24,7 +27,25 @@ beforeEach(() => {
 
 describe("Zot instance bootstrap", () => {
   it("creates main and deploys Zot when the instance has no Zot service", async () => {
-    vi.mocked(dokployGetWithConfiguration).mockResolvedValueOnce([]);
+    const mainProject = {
+      projectId: "project-main",
+      name: "main",
+      environments: [
+        {
+          environmentId: "environment-production",
+          name: "Production",
+          compose: [],
+        },
+      ],
+    };
+    vi.mocked(dokployGetWithConfiguration)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([mainProject])
+      .mockResolvedValueOnce(mainProject)
+      .mockResolvedValueOnce({
+        composeId: "compose-zot",
+        composeStatus: "done",
+      });
     vi.mocked(dokployPostWithConfiguration)
       .mockResolvedValueOnce({
         project: { projectId: "project-main" },
@@ -33,8 +54,12 @@ describe("Zot instance bootstrap", () => {
       .mockResolvedValueOnce({ composeId: "compose-zot" })
       .mockResolvedValue(undefined);
 
+    await expect(ensureDokployMainProject(configuration)).resolves.toEqual({
+      created: true,
+      projectId: "project-main",
+    });
     await expect(
-      ensureDokployZotRegistry({
+      deployDokployZotRegistry({
         configuration,
         rootDomain: "example.com",
         username: "admin@example.com",
@@ -42,7 +67,6 @@ describe("Zot instance bootstrap", () => {
       }),
     ).resolves.toMatchObject({
       created: true,
-      projectCreated: true,
       projectId: "project-main",
       composeId: "compose-zot",
     });
@@ -72,10 +96,10 @@ describe("Zot instance bootstrap", () => {
     );
   });
 
-  it("does not create main when Zot exists in any project", async () => {
+  it("reuses main and does not deploy when Zot already exists", async () => {
     const project = {
       projectId: "another-project",
-      name: "Applications",
+      name: "Main",
       environments: [
         {
           environmentId: "production",
@@ -86,10 +110,20 @@ describe("Zot instance bootstrap", () => {
     };
     vi.mocked(dokployGetWithConfiguration)
       .mockResolvedValueOnce([project])
-      .mockResolvedValueOnce(project);
+      .mockResolvedValueOnce(project)
+      .mockResolvedValueOnce([project])
+      .mockResolvedValueOnce(project)
+      .mockResolvedValueOnce({
+        composeId: "existing-zot",
+        composeStatus: "done",
+      });
 
+    await expect(ensureDokployMainProject(configuration)).resolves.toEqual({
+      created: false,
+      projectId: "another-project",
+    });
     await expect(
-      ensureDokployZotRegistry({
+      deployDokployZotRegistry({
         configuration,
         rootDomain: "example.com",
         username: "admin@example.com",

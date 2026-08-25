@@ -1,10 +1,10 @@
 import {
   getActiveDokployConfiguration,
   getActiveDokployInstanceId,
+  getActiveDokployProvisioningJob,
 } from "@/lib/dokploy";
 import { DokployInstanceForm } from "./_components/dokploy-instances/dokploy-instance-form";
 import { DeleteDokployInstanceButton } from "./_components/dokploy-instances/delete-dokploy-instance-button";
-import { getLatestDokployProvisioningJob } from "@/lib/storage/dokploy-provisioning";
 import { getDokployInstance } from "@/lib/storage/dokploy-instances";
 
 export default async function Home({
@@ -14,26 +14,21 @@ export default async function Home({
 }) {
   const selectedInstance = await getActiveDokployConfiguration();
   const activeInstanceId = await getActiveDokployInstanceId();
-  const latestProvisioningJob = getLatestDokployProvisioningJob();
+  const activeProvisioningJob = await getActiveDokployProvisioningJob();
   const activeInstance =
     selectedInstance ??
-    (latestProvisioningJob?.id === activeInstanceId &&
-    latestProvisioningJob.instanceId
-      ? getDokployInstance(latestProvisioningJob.instanceId)
+    (activeProvisioningJob?.id === activeInstanceId &&
+    activeProvisioningJob.instanceId
+      ? getDokployInstance(activeProvisioningJob.instanceId)
       : null);
   const query = await searchParams;
   const explicitlyAddingInstance = query.addDockploy === "1";
   const addingInstance = !activeInstance || explicitlyAddingInstance;
-  const provisioningJob =
-    addingInstance &&
-    !explicitlyAddingInstance &&
-    latestProvisioningJob?.id === activeInstanceId
-      ? latestProvisioningJob
-      : null;
+  const provisioningJob = !explicitlyAddingInstance
+    ? activeProvisioningJob
+    : null;
   const visibleProvisioningJob =
-    provisioningJob?.status !== "complete" && !provisioningJob?.instanceId
-      ? provisioningJob
-      : null;
+    provisioningJob?.status !== "complete" ? provisioningJob : null;
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -57,13 +52,13 @@ export default async function Home({
         </div>
         <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
           {addingInstance
-            ? "The connection is verified before its settings are stored."
+            ? "Save the instance first, then run the VPS setup steps."
             : "Changes are verified before the instance is updated."}
         </p>
         <DokployInstanceForm
           key={
             addingInstance
-              ? visibleProvisioningJob?.id ?? "new-empty"
+              ? (visibleProvisioningJob?.id ?? "new-empty")
               : activeInstance?.id
           }
           instance={
@@ -80,10 +75,9 @@ export default async function Home({
                   defaultServicePassword: activeInstance.defaultServicePassword,
                 }
           }
-          provisioningJob={visibleProvisioningJob}
+          provisioningJob={provisioningJob}
           newInstanceDefaults={{
-            username:
-              process.env.infra_services_default_username?.trim() ?? "",
+            username: process.env.infra_services_default_username?.trim() ?? "",
             password: process.env.infra_services_default_password ?? "",
           }}
         />

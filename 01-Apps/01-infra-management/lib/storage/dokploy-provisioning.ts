@@ -17,7 +17,7 @@ export type DokployProvisioningJob = {
   defaultServiceUsername: string;
   defaultServicePassword: string;
   apiKey: string;
-  status: "running" | "failed" | "complete";
+  status: "waiting" | "running" | "failed" | "complete";
   steps: Partial<Record<DokployBootstrapStep, DokployBootstrapStepStatus>>;
   logs: Partial<Record<DokployBootstrapStep, string[]>>;
   error: string;
@@ -25,85 +25,166 @@ export type DokployProvisioningJob = {
 };
 
 type JobRow = {
-  id: string; instance_id: string | null; name: string; root_url: string;
-  root_domain: string; vps_ip: string; default_service_username: string;
-  default_service_password: string; api_key: string; status: DokployProvisioningJob["status"];
-  steps_json: string; logs_json: string; error: string; updated_at: string;
+  id: string;
+  instance_id: string | null;
+  name: string;
+  root_url: string;
+  root_domain: string;
+  vps_ip: string;
+  default_service_username: string;
+  default_service_password: string;
+  api_key: string;
+  status: DokployProvisioningJob["status"];
+  steps_json: string;
+  logs_json: string;
+  error: string;
+  updated_at: string;
 };
 
+const JOB_SELECT = `SELECT id, instance_id, name, root_url, root_domain, vps_ip,
+  default_service_username, default_service_password, api_key, status,
+  steps_json, logs_json, error, updated_at
+  FROM dokploy_provisioning_jobs`;
+
 function parseJson<T>(value: string, fallback: T): T {
-  try { return JSON.parse(value) as T; } catch { return fallback; }
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
 }
 
 function toJob(row: JobRow): DokployProvisioningJob {
+  const storedSteps = parseJson<Record<string, DokployBootstrapStepStatus>>(
+    row.steps_json,
+    {},
+  );
+  const storedLogs = parseJson<Record<string, string[]>>(row.logs_json, {});
+  if (storedSteps.starting && storedSteps.starting !== "done") {
+    storedSteps.installing = storedSteps.starting;
+  }
+  if (storedLogs.starting?.length) {
+    storedLogs.installing = [
+      ...(storedLogs.installing ?? []),
+      ...storedLogs.starting,
+    ].slice(-200);
+  }
+  if (
+    row.status !== "complete" &&
+    Object.hasOwn(storedSteps, "verifying") &&
+    storedSteps["api-key"] === "done" &&
+    storedSteps.verifying !== "done"
+  ) {
+    delete storedSteps["api-key"];
+  }
+  if (storedLogs.verifying?.length) {
+    storedLogs["api-key"] = [
+      ...(storedLogs["api-key"] ?? []),
+      ...storedLogs.verifying,
+    ].slice(-200);
+  }
+  if (row.status === "failed") {
+    for (const [step, status] of Object.entries(storedSteps)) {
+      if (status === "running") storedSteps[step] = "error";
+    }
+  }
+  delete storedSteps.connecting;
+  delete storedSteps.starting;
+  delete storedLogs.connecting;
+  delete storedLogs.starting;
+  delete storedSteps.verifying;
+  delete storedLogs.verifying;
   return {
-    id: row.id, instanceId: row.instance_id ?? "", name: row.name,
-    rootUrl: row.root_url, rootDomain: row.root_domain, vpsIp: row.vps_ip,
+    id: row.id,
+    instanceId: row.instance_id ?? "",
+    name: row.name,
+    rootUrl: row.root_url,
+    rootDomain: row.root_domain,
+    vpsIp: row.vps_ip,
     defaultServiceUsername: row.default_service_username,
-    defaultServicePassword: row.default_service_password, apiKey: row.api_key,
+    defaultServicePassword: row.default_service_password,
+    apiKey: row.api_key,
     status: row.status,
-    steps: parseJson(row.steps_json, {}), logs: parseJson(row.logs_json, {}),
-    error: row.error, updatedAt: row.updated_at,
+    steps: storedSteps,
+    logs: storedLogs,
+    error: row.error,
+    updatedAt: row.updated_at,
   };
 }
 
-export function getLatestDokployProvisioningJob() {
-  const row = getDatabase().prepare(
-    `SELECT id, instance_id, name, root_url, root_domain, vps_ip,
-            default_service_username, default_service_password, api_key, status,
-            steps_json, logs_json, error, updated_at
-     FROM dokploy_provisioning_jobs ORDER BY updated_at DESC LIMIT 1`,
-  ).get() as JobRow | undefined;
+export function getDokployProvisioningJob(id: string) {
+  const row = getDatabase().prepare(`${JOB_SELECT} WHERE id = ?`).get(id) as
+    JobRow | undefined;
   return row ? toJob(row) : null;
 }
 
-export function getDokployProvisioningJob(id: string) {
-  const row = getDatabase().prepare(
-    `SELECT id, instance_id, name, root_url, root_domain, vps_ip,
-            default_service_username, default_service_password, api_key, status,
-            steps_json, logs_json, error, updated_at
-     FROM dokploy_provisioning_jobs WHERE id = ?`,
-  ).get(id) as JobRow | undefined;
+export function getDokployProvisioningJobByInstanceId(instanceId: string) {
+  const row = getDatabase()
+    .prepare(
+      `${JOB_SELECT} WHERE instance_id = ? ORDER BY updated_at DESC LIMIT 1`,
+    )
+    .get(instanceId) as JobRow | undefined;
   return row ? toJob(row) : null;
 }
 
 export function startDokployProvisioningJob(input: {
-  name: string; rootUrl: string; rootDomain: string; vpsIp: string;
-  vpsPassword: string; defaultServiceUsername: string; defaultServicePassword: string;
+  instanceId?: string;
+  name: string;
+  rootUrl: string;
+  rootDomain: string;
+  vpsIp: string;
+  defaultServiceUsername: string;
+  defaultServicePassword: string;
 }) {
-  const existing = getDatabase()
-    .prepare(
-      `SELECT id, instance_id, name, root_url, root_domain, vps_ip,
-              default_service_username, default_service_password, api_key,
-              status, steps_json, logs_json, error, updated_at
-       FROM dokploy_provisioning_jobs WHERE root_url = ?`,
-    )
+  const database = getDatabase();
+  const existing = database
+    .prepare(`${JOB_SELECT} WHERE root_url = ?`)
     .get(input.rootUrl) as JobRow | undefined;
   const id = existing?.id ?? randomUUID();
   const now = new Date().toISOString();
-  getDatabase().prepare(`INSERT INTO dokploy_provisioning_jobs
-    (id, name, root_url, root_domain, vps_ip, vps_password,
+  database
+    .prepare(
+      `INSERT INTO dokploy_provisioning_jobs
+    (id, instance_id, name, root_url, root_domain, vps_ip, vps_password,
      default_service_username, default_service_password, api_key, status,
      steps_json, logs_json, error, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', 'running', ?, ?, '', ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', 'waiting', ?, ?, '', ?, ?)
     ON CONFLICT(root_url) DO UPDATE SET name=excluded.name, root_domain=excluded.root_domain,
       vps_ip=excluded.vps_ip, vps_password=excluded.vps_password,
       default_service_username=excluded.default_service_username,
       default_service_password=excluded.default_service_password,
-      instance_id=NULL, api_key='', status='running', steps_json=excluded.steps_json,
-      logs_json=excluded.logs_json, error='', updated_at=excluded.updated_at`).run(
-        id, input.name, input.rootUrl, input.rootDomain, input.vpsIp, input.vpsPassword,
-        input.defaultServiceUsername, input.defaultServicePassword,
-        JSON.stringify({}), JSON.stringify({}), now, now,
-      );
+      instance_id=excluded.instance_id, api_key='', status='waiting', steps_json=excluded.steps_json,
+      logs_json=excluded.logs_json, error='', updated_at=excluded.updated_at`,
+    )
+    .run(
+      id,
+      input.instanceId ?? null,
+      input.name,
+      input.rootUrl,
+      input.rootDomain,
+      input.vpsIp,
+      input.defaultServicePassword,
+      input.defaultServiceUsername,
+      input.defaultServicePassword,
+      JSON.stringify({}),
+      JSON.stringify({}),
+      now,
+      now,
+    );
   return getDokployProvisioningJob(id)!;
 }
 
 export function updateDokployProvisioningJob(
   id: string,
-  patch: { step?: DokployBootstrapStep; stepStatus?: DokployBootstrapStepStatus;
-    log?: { step: DokployBootstrapStep; message: string }; apiKey?: string;
-    status?: DokployProvisioningJob["status"]; error?: string; instanceId?: string },
+  patch: {
+    step?: DokployBootstrapStep;
+    stepStatus?: DokployBootstrapStepStatus;
+    log?: { step: DokployBootstrapStep; message: string };
+    apiKey?: string;
+    status?: DokployProvisioningJob["status"];
+    error?: string;
+    instanceId?: string;
+  },
 ) {
   const job = getDokployProvisioningJob(id);
   if (!job) return null;
@@ -114,11 +195,20 @@ export function updateDokployProvisioningJob(
       job.logs[patch.log.step] = [...entries, patch.log.message].slice(-200);
     }
   }
-  getDatabase().prepare(`UPDATE dokploy_provisioning_jobs SET instance_id=?, api_key=?,
-    status=?, steps_json=?, logs_json=?, error=?, updated_at=? WHERE id=?`).run(
-      (patch.instanceId ?? job.instanceId) || null, patch.apiKey ?? job.apiKey,
-      patch.status ?? job.status, JSON.stringify(job.steps), JSON.stringify(job.logs),
-      patch.error ?? job.error, new Date().toISOString(), id,
+  getDatabase()
+    .prepare(
+      `UPDATE dokploy_provisioning_jobs SET instance_id=?, api_key=?,
+    status=?, steps_json=?, logs_json=?, error=?, updated_at=? WHERE id=?`,
+    )
+    .run(
+      (patch.instanceId ?? job.instanceId) || null,
+      patch.apiKey ?? job.apiKey,
+      patch.status ?? job.status,
+      JSON.stringify(job.steps),
+      JSON.stringify(job.logs),
+      patch.error ?? job.error,
+      new Date().toISOString(),
+      id,
     );
   return getDokployProvisioningJob(id);
 }

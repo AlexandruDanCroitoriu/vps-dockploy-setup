@@ -1,21 +1,17 @@
 import { getServerSession } from "next-auth";
-import { isIP } from "node:net";
-
 import { authOptions } from "@/auth";
-import { verifyDokployConnection } from "@/lib/dokploy";
-import { ACTIVE_DOKPLOY_COOKIE } from "@/lib/dokploy";
-import { ensureDokployZotRegistry } from "@/lib/dokploy/bootstrap-zot";
 import {
-  createDokployInstance,
-  getDokployUrlFromRootDomain,
-  isDuplicateInstanceError,
-  normalizeRootDomain,
-} from "@/lib/storage/dokploy-instances";
-import { bootstrapDokployVps } from "@/lib/vps/bootstrap-dokploy";
-import type { DokployBootstrapStep } from "@/lib/vps/bootstrap-progress";
+  deployDokployZotRegistry,
+  ensureDokployMainProject,
+} from "@/lib/dokploy/bootstrap-zot";
+import { updateDokployInstance } from "@/lib/storage/dokploy-instances";
+import { runDokployBootstrapStep } from "@/lib/vps/bootstrap-dokploy";
+import {
+  DOKPLOY_BOOTSTRAP_STEPS,
+  type DokployBootstrapStep,
+} from "@/lib/vps/bootstrap-progress";
 import {
   getDokployProvisioningJob,
-  startDokployProvisioningJob,
   updateDokployProvisioningJob,
 } from "@/lib/storage/dokploy-provisioning";
 
@@ -23,12 +19,146 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 1_800;
 
 type BootstrapRequest = {
-  name?: unknown;
-  rootDomain?: unknown;
-  ipAddress?: unknown;
-  defaultServiceUsername?: unknown;
-  defaultServicePassword?: unknown;
+  jobId?: unknown;
+  step?: unknown;
 };
+
+async function executeSavedStep(jobId: string, requestedStep: string) {
+  const job = getDokployProvisioningJob(jobId);
+  if (!job)
+    return Response.json({ message: "Setup was not found." }, { status: 404 });
+  const step = requestedStep as DokployBootstrapStep;
+  if (!DOKPLOY_BOOTSTRAP_STEPS.includes(step)) {
+    return Response.json(
+      { message: "Choose a valid setup step." },
+      { status: 400 },
+    );
+  }
+  const nextStep = DOKPLOY_BOOTSTRAP_STEPS.find(
+    (candidate) => job.steps[candidate] !== "done",
+  );
+  if (step !== nextStep) {
+    return Response.json(
+      { message: "Complete the current setup step first." },
+      { status: 409 },
+    );
+  }
+  updateDokployProvisioningJob(job.id, { status: "running", error: "" });
+  const setupConfiguration = {
+    baseUrl: `http://${job.vpsIp}:3000`,
+    apiKey: job.apiKey,
+  };
+  const progress = (
+    currentStep: DokployBootstrapStep,
+    status: "running" | "done" | "error",
+    message?: string,
+  ) => {
+    updateDokployProvisioningJob(job.id, {
+      step: currentStep,
+      stepStatus: status,
+      log: {
+        step: currentStep,
+        message:
+          status === "running"
+            ? "Step started."
+            : status === "done"
+              ? "Step completed."
+              : message || "Step failed.",
+      },
+      ...(status === "error" ? { error: message || "This step failed." } : {}),
+    });
+  };
+  try {
+    if (step === "main-project") {
+      progress(step, "running");
+      const project = await ensureDokployMainProject(setupConfiguration);
+      updateDokployProvisioningJob(job.id, {
+        log: {
+          step,
+          message: project.created
+            ? "Main project created."
+            : "Existing Main project reused.",
+        },
+      });
+      progress(step, "done");
+    } else if (step === "zot") {
+      progress(step, "running");
+      const zot = await deployDokployZotRegistry({
+        configuration: setupConfiguration,
+        rootDomain: job.rootDomain,
+        username: job.defaultServiceUsername,
+        password: job.defaultServicePassword,
+        onStatus: (message) => {
+          updateDokployProvisioningJob(job.id, {
+            log: { step, message },
+          });
+        },
+      });
+      updateDokployProvisioningJob(job.id, {
+        log: {
+          step,
+          message: zot.created
+            ? "Zot is running in the Main project."
+            : "Existing running Zot service reused.",
+        },
+      });
+      progress(step, "done");
+    } else {
+      await runDokployBootstrapStep(
+        {
+          ipAddress: job.vpsIp,
+          rootDomain: job.rootDomain,
+          administratorEmail: job.defaultServiceUsername,
+          administratorPassword: job.defaultServicePassword,
+          vpsPassword: job.defaultServicePassword,
+          step,
+          apiKey: job.apiKey,
+        },
+        progress,
+        (logStep, message) => {
+          updateDokployProvisioningJob(job.id, {
+            log: { step: logStep, message },
+          });
+        },
+        (apiKey) => {
+          updateDokployProvisioningJob(job.id, { apiKey });
+        },
+      );
+    }
+    const updatedJob = getDokployProvisioningJob(job.id)!;
+    const complete = DOKPLOY_BOOTSTRAP_STEPS.every(
+      (candidate) => updatedJob.steps[candidate] === "done",
+    );
+    if (updatedJob.instanceId) {
+      updateDokployInstance(updatedJob.instanceId, {
+        name: updatedJob.name,
+        rootUrl: updatedJob.rootUrl,
+        rootDomain: updatedJob.rootDomain,
+        vpsIp: updatedJob.vpsIp,
+        vpsPassword: updatedJob.defaultServicePassword,
+        apiKey: updatedJob.apiKey,
+        defaultServiceUsername: updatedJob.defaultServiceUsername,
+        defaultServicePassword: updatedJob.defaultServicePassword,
+      });
+    }
+    updateDokployProvisioningJob(job.id, {
+      status: complete ? "complete" : "waiting",
+      error: "",
+    });
+    return Response.json(getDokployProvisioningJob(job.id));
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "VPS setup failed.";
+    if (getDokployProvisioningJob(job.id)?.steps[step] !== "error") {
+      progress(step, "error", message);
+    }
+    updateDokployProvisioningJob(job.id, { status: "failed", error: message });
+    return Response.json(
+      { ...getDokployProvisioningJob(job.id), message },
+      { status: 500 },
+    );
+  }
+}
 
 function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -53,201 +183,7 @@ export async function POST(request: Request) {
   const body = (await request
     .json()
     .catch(() => null)) as BootstrapRequest | null;
-  const name = text(body?.name);
-  const ipAddress = text(body?.ipAddress);
-  const administratorEmail = text(body?.defaultServiceUsername);
-  const administratorPassword =
-    typeof body?.defaultServicePassword === "string"
-      ? body.defaultServicePassword
-      : "";
-  let rootDomain = "";
-  try {
-    rootDomain = normalizeRootDomain(text(body?.rootDomain));
-  } catch {
-    return Response.json(
-      { message: "Enter a valid root domain." },
-      { status: 400 },
-    );
-  }
-  if (!name || name.length > 100 || !isIP(ipAddress)) {
-    return Response.json(
-      { message: "Complete the instance name and VPS connection fields." },
-      { status: 400 },
-    );
-  }
-  if (
-    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(administratorEmail) ||
-    !administratorPassword ||
-    administratorEmail.length > 255 ||
-    administratorPassword.length > 255
-  ) {
-    return Response.json(
-      { message: "Enter valid Dokploy administrator credentials." },
-      { status: 400 },
-    );
-  }
-
-  const job = startDokployProvisioningJob({
-    name,
-    rootDomain,
-    rootUrl: getDokployUrlFromRootDomain(rootDomain),
-    vpsIp: ipAddress,
-    vpsPassword: administratorPassword,
-    defaultServiceUsername: administratorEmail,
-    defaultServicePassword: administratorPassword,
-  });
-
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream({
-    async start(controller) {
-      const send = (payload: unknown) => {
-        try {
-          controller.enqueue(encoder.encode(`${JSON.stringify(payload)}\n`));
-        } catch {}
-      };
-      const heartbeat = setInterval(
-        () => {
-          updateDokployProvisioningJob(job.id, {});
-          send({ type: "heartbeat", timestamp: Date.now() });
-        },
-        10_000,
-      );
-      try {
-        send({ type: "job", jobId: job.id });
-        const bootstrapped = await bootstrapDokployVps(
-          {
-            ipAddress,
-            rootDomain,
-            administratorEmail,
-            administratorPassword,
-            vpsPassword: administratorPassword,
-            completedSteps: Object.entries(job.steps).flatMap(
-              ([step, status]) =>
-                status === "done" ? [step as DokployBootstrapStep] : [],
-            ),
-          },
-          (step, status, message) => {
-            const stepLog =
-              status === "running"
-                ? "Step started."
-                : status === "done"
-                  ? "Step completed."
-                  : message || "Step failed.";
-            updateDokployProvisioningJob(job.id, {
-              step,
-              stepStatus: status,
-              log: { step, message: stepLog },
-              ...(status === "error" ? { error: message ?? "This step failed." } : {}),
-            });
-            send({ type: "step", step, status, message });
-            send({
-              type: "log",
-              step,
-              message: stepLog,
-            });
-          },
-          (step, message) => {
-            updateDokployProvisioningJob(job.id, { log: { step, message } });
-            send({ type: "log", step, message });
-          },
-          (apiKey) => {
-            updateDokployProvisioningJob(job.id, { apiKey });
-            send({ type: "credential", apiKey });
-          },
-        );
-        await verifyDokployConnection({
-          baseUrl: bootstrapped.setupUrl,
-          apiKey: bootstrapped.apiKey,
-        });
-        updateDokployProvisioningJob(job.id, {
-          step: "zot",
-          stepStatus: "running",
-          log: { step: "zot", message: "Step started." },
-        });
-        send({ type: "step", step: "zot", status: "running" });
-        send({ type: "log", step: "zot", message: "Step started." });
-        try {
-          const zot = await ensureDokployZotRegistry({
-            configuration: {
-              baseUrl: bootstrapped.setupUrl,
-              apiKey: bootstrapped.apiKey,
-            },
-            rootDomain,
-            username: administratorEmail,
-            password: administratorPassword,
-          });
-          const zotMessage = zot.created
-            ? `${zot.projectCreated ? "Created" : "Reused"} the main project and queued the Zot registry deployment.`
-            : "An existing Zot service was found; no project or service was created.";
-          updateDokployProvisioningJob(job.id, {
-            log: { step: "zot", message: zotMessage },
-          });
-          send({ type: "log", step: "zot", message: zotMessage });
-          updateDokployProvisioningJob(job.id, {
-            step: "zot",
-            stepStatus: "done",
-            log: { step: "zot", message: "Step completed." },
-          });
-          send({ type: "step", step: "zot", status: "done" });
-          send({ type: "log", step: "zot", message: "Step completed." });
-        } catch (error) {
-          const message =
-            error instanceof Error
-              ? error.message
-              : "Unable to create and deploy Zot.";
-          updateDokployProvisioningJob(job.id, {
-            step: "zot",
-            stepStatus: "error",
-            error: message,
-            log: { step: "zot", message },
-          });
-          send({ type: "step", step: "zot", status: "error", message });
-          send({ type: "log", step: "zot", message });
-          throw error;
-        }
-        const instance = createDokployInstance({
-          name,
-          rootDomain,
-          rootUrl: getDokployUrlFromRootDomain(rootDomain),
-          vpsIp: ipAddress,
-          vpsPassword: administratorPassword,
-          apiKey: bootstrapped.apiKey,
-          defaultServiceUsername: administratorEmail,
-          defaultServicePassword: administratorPassword,
-        });
-        updateDokployProvisioningJob(job.id, {
-          status: "complete",
-          instanceId: instance.id,
-          apiKey: bootstrapped.apiKey,
-          error: "",
-        });
-        send({ type: "complete", instanceId: instance.id });
-      } catch (error) {
-        const message = isDuplicateInstanceError(error)
-          ? "That Dockploy instance is already configured."
-          : error instanceof Error
-            ? error.message
-            : "VPS setup failed.";
-        updateDokployProvisioningJob(job.id, {
-          status: "failed",
-          error: message,
-        });
-        send({
-          type: "failed",
-          message,
-        });
-      } finally {
-        clearInterval(heartbeat);
-        controller.close();
-      }
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      "Cache-Control": "no-store",
-      "Content-Type": "application/x-ndjson; charset=utf-8",
-      "Set-Cookie": `${ACTIVE_DOKPLOY_COOKIE}=${encodeURIComponent(job.id)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000${process.env.NODE_ENV === "production" ? "; Secure" : ""}`,
-    },
-  });
+  const jobId = text(body?.jobId);
+  const requestedStep = text(body?.step);
+  return executeSavedStep(jobId, requestedStep);
 }

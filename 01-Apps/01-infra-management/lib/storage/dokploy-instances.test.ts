@@ -13,6 +13,10 @@ import {
   normalizeRootDomain,
   updateDokployInstance,
 } from "./dokploy-instances";
+import {
+  getDokployProvisioningJobByInstanceId,
+  startDokployProvisioningJob,
+} from "./dokploy-provisioning";
 
 let temporaryDirectory = "";
 
@@ -113,6 +117,30 @@ describe("Dockploy instance storage", () => {
     expect(deleteDokployInstance(created.id)).toBe(true);
     expect(getDokployInstance(created.id)).toBeNull();
     expect(deleteDokployInstance(created.id)).toBe(false);
+  });
+
+  it("deletes setup progress and logs with an unfinished instance", () => {
+    const created = createDokployInstance({
+      name: "Provisioning",
+      rootUrl: "https://dockploy.setup.example.com",
+      rootDomain: "setup.example.com",
+      apiKey: "",
+      defaultServiceUsername: "admin@example.com",
+      defaultServicePassword: "password",
+    });
+    startDokployProvisioningJob({
+      instanceId: created.id,
+      name: created.name,
+      rootUrl: created.rootUrl,
+      rootDomain: created.rootDomain,
+      vpsIp: "203.0.113.10",
+      defaultServiceUsername: "admin@example.com",
+      defaultServicePassword: "password",
+    });
+
+    expect(getDokployProvisioningJobByInstanceId(created.id)).not.toBeNull();
+    expect(deleteDokployInstance(created.id)).toBe(true);
+    expect(getDokployProvisioningJobByInstanceId(created.id)).toBeNull();
   });
 });
 

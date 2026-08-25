@@ -1,4 +1,0 @@
-interface:
-  display_name: "Pre-commit Project Assessment"
-  short_description: "Audit project health before committing changes"
-  default_prompt: "Use $pre-commit-project-assessment to assess this project before I commit."

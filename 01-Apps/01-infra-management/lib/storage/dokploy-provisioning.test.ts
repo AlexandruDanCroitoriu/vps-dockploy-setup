@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { closeDatabaseForTests } from "./database";
 import {
+  getDokployProvisioningJob,
   startDokployProvisioningJob,
   updateDokployProvisioningJob,
 } from "./dokploy-provisioning";
@@ -12,7 +13,10 @@ let temporaryDirectory = "";
 
 beforeEach(() => {
   temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "infra-job-"));
-  process.env.SQLITE_DATABASE_PATH = path.join(temporaryDirectory, "test.sqlite");
+  process.env.SQLITE_DATABASE_PATH = path.join(
+    temporaryDirectory,
+    "test.sqlite",
+  );
 });
 
 afterEach(() => {
@@ -26,12 +30,24 @@ const input = {
   rootUrl: "https://dockploy.example.com",
   rootDomain: "example.com",
   vpsIp: "203.0.113.10",
-  vpsPassword: "password",
   defaultServiceUsername: "admin@example.com",
   defaultServicePassword: "password",
 };
 
 describe("Dokploy provisioning persistence", () => {
+  it("keeps the combined API-key generation and verification step completed", () => {
+    const job = startDokployProvisioningJob(input);
+    updateDokployProvisioningJob(job.id, {
+      step: "api-key",
+      stepStatus: "done",
+      apiKey: "generated-key",
+      log: { step: "api-key", message: "Step completed." },
+    });
+
+    expect(getDokployProvisioningJob(job.id)?.steps["api-key"]).toBe("done");
+    expect(getDokployProvisioningJob(job.id)?.apiKey).toBe("generated-key");
+  });
+
   it("starts interrupted setups again with no steps, logs, errors, or API key", () => {
     const first = startDokployProvisioningJob(input);
     updateDokployProvisioningJob(first.id, {
@@ -40,9 +56,9 @@ describe("Dokploy provisioning persistence", () => {
       log: { step: "updating", message: "Update completed." },
     });
     updateDokployProvisioningJob(first.id, {
-      step: "starting",
+      step: "installing",
       stepStatus: "error",
-      log: { step: "starting", message: "Obsolete failure." },
+      log: { step: "installing", message: "Obsolete failure." },
       error: "Obsolete failure.",
     });
 

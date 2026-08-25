@@ -9,9 +9,7 @@ import {
 import { useRouter } from "next/navigation";
 import {
   useActionState,
-  useCallback,
   useEffect,
-  type FormEvent,
   useRef,
   useState,
   useTransition,
@@ -22,7 +20,6 @@ import { Input } from "@/components/ui/input";
 import {
   createDokployInstanceAction,
   resolveDokployVpsIpAction,
-  selectDokployInstanceAction,
   updateDokployInstanceAction,
 } from "../../_actions/dokploy-instances";
 import type { ActionState } from "../../dokploy/_actions/shared";
@@ -35,15 +32,13 @@ import type { DokployProvisioningJob } from "@/lib/storage/dokploy-provisioning"
 
 const initialState: ActionState = { status: "idle", message: "" };
 const stepLabels: Record<DokployBootstrapStep, string> = {
-  connecting: "Connecting to VPS",
   updating: "Updating and upgrading operating system",
-  installing: "Installing Dokploy",
-  starting: "Waiting for Dokploy to start",
+  installing: "Installing and starting Dokploy",
   administrator: "Creating Dokploy administrator",
-  "api-key": "Generating API/CLI key",
+  "api-key": "Generating and verifying API/CLI key",
   domain: "Configuring HTTPS domain",
-  verifying: "Verifying Dokploy connection",
-  zot: "Creating and deploying Zot registry",
+  "main-project": "Creating Main project",
+  zot: "Deploying Zot to Main project",
 };
 
 export function DokployInstanceForm({
@@ -65,10 +60,18 @@ export function DokployInstanceForm({
   newInstanceDefaults?: { username: string; password: string };
 }) {
   const isEditing = Boolean(instance);
-  const [instanceName, setInstanceName] = useState(instance?.name ?? provisioningJob?.name ?? "");
-  const [rootDomain, setRootDomain] = useState(instance?.rootDomain ?? provisioningJob?.rootDomain ?? "");
-  const [vpsIp, setVpsIp] = useState(instance?.vpsIp ?? provisioningJob?.vpsIp ?? "");
-  const [apiKey, setApiKey] = useState(instance?.apiKey ?? provisioningJob?.apiKey ?? "");
+  const [instanceName, setInstanceName] = useState(
+    instance?.name ?? provisioningJob?.name ?? "",
+  );
+  const [rootDomain, setRootDomain] = useState(
+    instance?.rootDomain ?? provisioningJob?.rootDomain ?? "",
+  );
+  const [vpsIp, setVpsIp] = useState(
+    instance?.vpsIp ?? provisioningJob?.vpsIp ?? "",
+  );
+  const [apiKey, setApiKey] = useState(
+    instance?.apiKey ?? provisioningJob?.apiKey ?? "",
+  );
   const [defaultServiceUsername, setDefaultServiceUsername] = useState(
     instance?.defaultServiceUsername ??
       provisioningJob?.defaultServiceUsername ??
@@ -87,15 +90,21 @@ export function DokployInstanceForm({
   const [copiedLogs, setCopiedLogs] = useState<
     DokployBootstrapStep | "all" | null
   >(null);
-  const [bootstrapPending, setBootstrapPending] = useState(provisioningJob?.status === "running");
-  const [bootstrapError, setBootstrapError] = useState(provisioningJob?.error ?? "");
+  const [bootstrapPending, setBootstrapPending] = useState(
+    provisioningJob?.status === "running",
+  );
+  const [bootstrapError, setBootstrapError] = useState(
+    provisioningJob?.error ?? "",
+  );
   const [bootstrapSteps, setBootstrapSteps] = useState<
     Partial<Record<DokployBootstrapStep, DokployBootstrapStepStatus>>
   >(provisioningJob?.steps ?? {});
   const [bootstrapLogs, setBootstrapLogs] = useState<
     Partial<Record<DokployBootstrapStep, string[]>>
   >(provisioningJob?.logs ?? {});
-  const [provisioningJobId, setProvisioningJobId] = useState(provisioningJob?.id ?? "");
+  const provisioningJobId = provisioningJob?.id ?? "";
+  const [automaticSetup, setAutomaticSetup] = useState(false);
+  const setupComplete = provisioningJob?.status === "complete";
   const apiKeyRef = useRef<HTMLInputElement>(null);
   const dockployUrl = rootDomain.trim()
     ? `https://dockploy.${rootDomain.trim().toLowerCase().replace(/\.$/, "")}`
@@ -106,26 +115,6 @@ export function DokployInstanceForm({
   const [state, formAction, pending] = useActionState(action, initialState);
   const formRef = useRef<HTMLFormElement>(null);
   const router = useRouter();
-
-  const resetNewInstanceForm = useCallback(() => {
-    vpsIpRequestRef.current += 1;
-    formRef.current?.reset();
-    setInstanceName("");
-    setRootDomain("");
-    setVpsIp("");
-    setApiKey("");
-    setDefaultServiceUsername(newInstanceDefaults.username);
-    setDefaultServicePassword(newInstanceDefaults.password);
-    setVpsIpError("");
-    setShowApiKey(false);
-    setApiKeyCopied(false);
-    setCopiedLogs(null);
-    setBootstrapPending(false);
-    setBootstrapError("");
-    setBootstrapSteps({});
-    setBootstrapLogs({});
-    setProvisioningJobId("");
-  }, [newInstanceDefaults.password, newInstanceDefaults.username]);
 
   async function copyProvisioningLogs(target: DokployBootstrapStep | "all") {
     const value =
@@ -153,7 +142,10 @@ export function DokployInstanceForm({
   useEffect(() => {
     if (!provisioningJobId || !bootstrapPending) return;
     const interval = window.setInterval(async () => {
-      const response = await fetch(`/api/dokploy-instances/bootstrap?id=${encodeURIComponent(provisioningJobId)}`, { cache: "no-store" });
+      const response = await fetch(
+        `/api/dokploy-instances/bootstrap?id=${encodeURIComponent(provisioningJobId)}`,
+        { cache: "no-store" },
+      );
       if (!response.ok) return;
       const job = (await response.json()) as DokployProvisioningJob;
       setBootstrapSteps(job.steps);
@@ -162,12 +154,8 @@ export function DokployInstanceForm({
       setBootstrapError(job.error);
       if (job.status === "complete" && job.instanceId) {
         window.clearInterval(interval);
-        const selected = await selectDokployInstanceAction(job.instanceId);
-        if (selected.status !== "error") {
-          resetNewInstanceForm();
-          router.replace("/");
-          router.refresh();
-        }
+        setBootstrapPending(false);
+        router.refresh();
       } else if (job.status === "failed") {
         setBootstrapPending(false);
         window.clearInterval(interval);
@@ -180,7 +168,7 @@ export function DokployInstanceForm({
       }
     }, 2_000);
     return () => window.clearInterval(interval);
-  }, [bootstrapPending, provisioningJobId, resetNewInstanceForm, router]);
+  }, [bootstrapPending, provisioningJobId, router]);
 
   useEffect(() => {
     if (state.status !== "success") return;
@@ -212,127 +200,72 @@ export function DokployInstanceForm({
     return () => window.clearTimeout(timeout);
   }, [rootDomain]);
 
-  async function submitBootstrap(event: FormEvent<HTMLFormElement>) {
-    if (isEditing || !vpsIp) return;
-    event.preventDefault();
+  async function runSavedStep(step: DokployBootstrapStep) {
+    if (!provisioningJobId || bootstrapPending) return;
     setBootstrapPending(true);
     setBootstrapError("");
-    setBootstrapSteps({});
-    setBootstrapLogs({});
-    setApiKey("");
-    let activeJobId = provisioningJobId;
-    let reconnectingToPersistedJob = false;
+    setBootstrapSteps((current) => ({ ...current, [step]: "running" }));
     try {
       const response = await fetch("/api/dokploy-instances/bootstrap", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: instanceName,
-          rootDomain,
-          ipAddress: vpsIp,
-          defaultServiceUsername,
-          defaultServicePassword,
-        }),
+        body: JSON.stringify({ jobId: provisioningJobId, step }),
       });
-      if (!response.ok || !response.body) {
-        const payload = (await response.json().catch(() => null)) as {
-          message?: string;
-        } | null;
-        throw new Error(payload?.message || "Unable to start VPS setup.");
+      const job = (await response.json()) as DokployProvisioningJob & {
+        message?: string;
+      };
+      if (!response.ok)
+        throw new Error(job.message || job.error || "VPS setup failed.");
+      setBootstrapSteps(job.steps);
+      setBootstrapLogs(job.logs);
+      setApiKey(job.apiKey);
+      setBootstrapError(job.error);
+      if (
+        job.status === "complete" ||
+        (step === "api-key" && job.steps["api-key"] === "done") ||
+        (step === "main-project" && job.steps["main-project"] === "done")
+      ) {
+        router.refresh();
       }
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffered = "";
-      let completedInstanceId = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        buffered += decoder.decode(value, { stream: !done });
-        const lines = buffered.split("\n");
-        buffered = lines.pop() ?? "";
-        for (const line of lines) {
-          if (!line) continue;
-          const update = JSON.parse(line) as {
-            type:
-              | "step"
-              | "log"
-              | "heartbeat"
-              | "job"
-              | "credential"
-              | "complete"
-              | "failed";
-            step?: DokployBootstrapStep;
-            status?: DokployBootstrapStepStatus;
-            message?: string;
-            instanceId?: string;
-            apiKey?: string;
-            jobId?: string;
-          };
-          if (update.type === "step" && update.step && update.status) {
-            setBootstrapSteps((current) => ({
-              ...current,
-              [update.step!]: update.status,
-            }));
-          } else if (update.type === "log" && update.step && update.message) {
-            setBootstrapLogs((current) => {
-              const existing = current[update.step!] ?? [];
-              if (existing.at(-1) === update.message) return current;
-              return {
-                ...current,
-                [update.step!]: [...existing, update.message!].slice(-200),
-              };
-            });
-          } else if (update.type === "failed") {
-            throw new Error(update.message || "VPS setup failed.");
-          } else if (update.type === "credential" && update.apiKey) {
-            setApiKey(update.apiKey);
-          } else if (update.type === "job" && update.jobId) {
-            activeJobId = update.jobId;
-            setProvisioningJobId(update.jobId);
-            router.refresh();
-          } else if (update.type === "complete" && update.instanceId) {
-            completedInstanceId = update.instanceId;
-          }
+      if (automaticSetup) {
+        const next = DOKPLOY_BOOTSTRAP_STEPS.find(
+          (candidate) => job.steps[candidate] !== "done",
+        );
+        if (next) {
+          setBootstrapPending(false);
+          window.setTimeout(() => runSavedStep(next), 0);
+          return;
         }
-        if (done) break;
       }
-      if (!completedInstanceId) throw new Error("VPS setup did not complete.");
-      const selected = await selectDokployInstanceAction(completedInstanceId);
-      if (selected.status === "error") throw new Error(selected.message);
-      resetNewInstanceForm();
-      router.replace("/");
-      router.refresh();
     } catch (error) {
-      if (error instanceof TypeError && activeJobId) {
-        reconnectingToPersistedJob = true;
-        setProvisioningJobId(activeJobId);
-        setBootstrapPending(true);
-        setBootstrapError(
-          "The live setup connection was interrupted. Reconnecting to the saved VPS setup progress…",
-        );
-        return;
-      }
-      setBootstrapSteps((current) => {
-        const running = DOKPLOY_BOOTSTRAP_STEPS.find(
-          (step) => current[step] === "running",
-        );
-        return running ? { ...current, [running]: "error" } : current;
-      });
       setBootstrapError(
-        error instanceof Error
-            ? error.message
-            : "VPS setup failed.",
+        error instanceof Error ? error.message : "VPS setup failed.",
       );
+      const response = await fetch(
+        `/api/dokploy-instances/bootstrap?id=${encodeURIComponent(provisioningJobId)}`,
+        { cache: "no-store" },
+      );
+      if (response.ok) {
+        const job = (await response.json()) as DokployProvisioningJob;
+        setBootstrapSteps(job.steps);
+        setBootstrapLogs(job.logs);
+      }
     } finally {
-      if (!reconnectingToPersistedJob) setBootstrapPending(false);
+      setBootstrapPending(false);
     }
   }
 
   return (
-    <div className={!isEditing ? "mt-5 grid gap-5 lg:grid-cols-2" : "mt-5"}>
+    <div
+      className={
+        !isEditing || provisioningJob
+          ? "mt-5 grid gap-5 lg:grid-cols-2"
+          : "mt-5"
+      }
+    >
       <form
         ref={formRef}
         action={formAction}
-        onSubmit={submitBootstrap}
         autoComplete="off"
         className="space-y-4"
       >
@@ -477,8 +410,8 @@ export function DokployInstanceForm({
           </div>
           {!isEditing && (
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            Generated automatically during VPS setup. It can be changed when
-            editing the saved instance.
+              Generated automatically during VPS setup. It can be changed when
+              editing the saved instance.
             </p>
           )}
         </FormField>
@@ -534,32 +467,72 @@ export function DokployInstanceForm({
           <Button
             type="submit"
             size="md"
-            disabled={pending || bootstrapPending}
+            disabled={
+              pending ||
+              bootstrapPending ||
+              Boolean(provisioningJob && !setupComplete)
+            }
           >
-            {pending || bootstrapPending
-              ? "Verifying…"
-              : provisioningJobId && bootstrapError
-                ? "Restart VPS setup"
+            {pending
+              ? "Saving…"
               : instance
                 ? "Verify and save changes"
-                : "Verify and add Dockploy"}
+                : "Save new instance"}
           </Button>
         </div>
       </form>
-      {!isEditing && (
+      {(!isEditing || provisioningJob) && (
         <aside className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-white/10 dark:bg-gray-900/40">
           <div className="flex items-center justify-between gap-3">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-              VPS setup progress
-            </h3>
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                VPS setup progress
+              </h3>
+              <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                {setupComplete
+                  ? "Setup completed. Review the status and logs for each step."
+                  : provisioningJobId
+                    ? "Run each step yourself or continue automatically."
+                    : "Save the instance to enable the first setup step."}
+              </p>
+            </div>
+            <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-gray-700 dark:text-gray-300">
+              <span>
+                {setupComplete
+                  ? "Complete"
+                  : automaticSetup
+                    ? "Automatic"
+                    : "Manual"}
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={automaticSetup}
+                aria-label="Continue setup automatically"
+                disabled={!provisioningJobId || setupComplete}
+                onClick={() => setAutomaticSetup((value) => !value)}
+                className={`relative h-6 w-11 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${automaticSetup ? "bg-indigo-600" : "bg-gray-300 dark:bg-gray-600"}`}
+              >
+                <span
+                  className={`absolute top-0.5 size-5 rounded-full bg-white shadow-sm transition-transform ${automaticSetup ? "translate-x-5" : "translate-x-0.5"}`}
+                />
+              </button>
+            </label>
+          </div>
+          <div className="mt-3 flex justify-end">
             <button
               type="button"
-              disabled={!Object.values(bootstrapLogs).some((logs) => logs?.length)}
+              disabled={
+                !Object.values(bootstrapLogs).some((logs) => logs?.length)
+              }
               onClick={() => copyProvisioningLogs("all")}
               className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-white disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/5"
             >
               {copiedLogs === "all" ? (
-                <CheckIcon className="size-4 text-emerald-500" aria-hidden="true" />
+                <CheckIcon
+                  className="size-4 text-emerald-500"
+                  aria-hidden="true"
+                />
               ) : (
                 <ClipboardDocumentIcon className="size-4" aria-hidden="true" />
               )}
@@ -570,6 +543,13 @@ export function DokployInstanceForm({
             {DOKPLOY_BOOTSTRAP_STEPS.map((step) => {
               const status = bootstrapSteps[step] ?? "waiting";
               const logs = bootstrapLogs[step] ?? [];
+              const currentStep = DOKPLOY_BOOTSTRAP_STEPS.find(
+                (candidate) => bootstrapSteps[candidate] !== "done",
+              );
+              const canRun =
+                Boolean(provisioningJobId) &&
+                step === currentStep &&
+                !bootstrapPending;
               return (
                 <li key={step} className="text-sm">
                   <div className="flex items-start gap-2">
@@ -603,13 +583,29 @@ export function DokployInstanceForm({
                     >
                       {stepLabels[step]}
                     </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      disabled={!canRun}
+                      onClick={() => runSavedStep(step)}
+                      className="ml-auto"
+                    >
+                      {status === "done"
+                        ? "Completed"
+                        : status === "error"
+                          ? "Retry"
+                          : status === "running"
+                            ? "Running…"
+                            : "Run"}
+                    </Button>
                     <button
                       type="button"
                       disabled={logs.length === 0}
                       onClick={() => copyProvisioningLogs(step)}
                       aria-label={`Copy ${stepLabels[step]} logs`}
                       title={`Copy ${stepLabels[step]} logs`}
-                      className="ml-auto rounded p-0.5 text-gray-500 hover:bg-white hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-30 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-gray-200"
+                      className="rounded p-0.5 text-gray-500 hover:bg-white hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-30 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-gray-200"
                     >
                       {copiedLogs === step ? (
                         <CheckIcon

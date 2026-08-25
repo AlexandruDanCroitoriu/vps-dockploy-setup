@@ -43,7 +43,7 @@ export async function dokployRequest(endpoint: string, init?: RequestInit) {
   const instance = await getActiveDokployConfiguration();
   if (!instance) throw new NoActiveDokployInstanceError();
   return dokployRequestWithConfiguration(
-    { baseUrl: instance.rootUrl, apiKey: instance.apiKey },
+    { baseUrl: instance.apiBaseUrl, apiKey: instance.apiKey },
     endpoint,
     init,
   );

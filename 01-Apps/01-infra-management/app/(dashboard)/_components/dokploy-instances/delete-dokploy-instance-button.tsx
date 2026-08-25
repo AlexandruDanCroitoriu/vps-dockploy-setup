@@ -80,8 +80,8 @@ export function DeleteDokployInstanceButton({
           >
             <p className="text-sm text-gray-600 dark:text-gray-300">
               This removes the stored URL, domain, VPS IP, VPS password, service
-              credentials, and API/CLI key. It does not uninstall Dokploy or
-              delete anything from the VPS.
+              credentials, API/CLI key, and setup progress with its logs. It
+              does not uninstall Dokploy or delete anything from the VPS.
             </p>
             <ActionMessage status={state.status} message={state.message} />
           </form>

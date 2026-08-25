@@ -174,10 +174,16 @@ export function updateDokployInstance(
 }
 
 export function deleteDokployInstance(id: string) {
-  return (
-    getDatabase().prepare("DELETE FROM dokploy_instances WHERE id = ?").run(id)
-      .changes > 0
-  );
+  const database = getDatabase();
+  return database.transaction(() => {
+    database
+      .prepare("DELETE FROM dokploy_provisioning_jobs WHERE instance_id = ?")
+      .run(id);
+    return (
+      database.prepare("DELETE FROM dokploy_instances WHERE id = ?").run(id)
+        .changes > 0
+    );
+  })();
 }
 
 export function bootstrapLegacyDokployInstance() {

@@ -5,7 +5,14 @@ import {
   dokployGetWithConfiguration,
   dokployPostWithConfiguration,
 } from "./client";
-import { isRecord, normalizeProject, stringValue } from "./normalizers";
+import {
+  containersFromResponse,
+  isContainerRunning,
+  isRecord,
+  normalizeProject,
+  serviceStatus,
+  stringValue,
+} from "./normalizers";
 import type { DokployProject } from "./types";
 
 type DokployConfiguration = { baseUrl: string; apiKey: string };
@@ -37,16 +44,18 @@ async function loadProjects(configuration: DokployConfiguration) {
   );
 }
 
-function containsZot(projects: readonly DokployProject[]) {
-  return projects.some((project) =>
-    project.environments.some((environment) =>
-      environment.services.some(
+function findZot(projects: readonly DokployProject[]) {
+  for (const project of projects) {
+    for (const environment of project.environments) {
+      const zot = environment.services.find(
         (service) =>
           service.type === "compose" &&
           service.name.trim().toLowerCase() === "zot",
-      ),
-    ),
-  );
+      );
+      if (zot) return zot;
+    }
+  }
+  return null;
 }
 
 function createdProjectIds(payload: unknown) {
@@ -67,43 +76,97 @@ function createdComposeId(payload: unknown) {
   return isRecord(candidate) ? stringValue(candidate.composeId) : "";
 }
 
-export async function ensureDokployZotRegistry(input: {
+type ZotBootstrapInput = {
   configuration: DokployConfiguration;
   rootDomain: string;
   username: string;
   password: string;
-}) {
-  const projects = await loadProjects(input.configuration);
-  if (containsZot(projects)) return { created: false } as const;
+  onStatus?: (message: string) => void;
+};
 
-  let mainProject = projects.find(
+async function waitForZotRunning(input: ZotBootstrapInput, composeId: string) {
+  const deadline = Date.now() + 10 * 60 * 1_000;
+  let attempt = 0;
+  while (Date.now() < deadline) {
+    attempt += 1;
+    try {
+      const payload = await dokployGetWithConfiguration<unknown>(
+        input.configuration,
+        `compose.one?${new URLSearchParams({ composeId })}`,
+      );
+      const details = unwrapData(payload);
+      if (isRecord(details)) {
+        if (serviceStatus(details, "compose") === "running") return;
+        const appName = stringValue(details.appName);
+        if (appName) {
+          const query = new URLSearchParams({
+            appName,
+            appType: "docker-compose",
+          });
+          const serverId = stringValue(details.serverId);
+          if (serverId) query.set("serverId", serverId);
+          const containers = containersFromResponse(
+            await dokployGetWithConfiguration<unknown>(
+              input.configuration,
+              `docker.getContainersByAppNameMatch?${query}`,
+            ),
+          );
+          if (containers.some(isContainerRunning)) return;
+        }
+      }
+    } catch {
+      input.onStatus?.(
+        `Dokploy status check ${attempt} was unavailable; retrying.`,
+      );
+    }
+    input.onStatus?.(`Waiting for Zot to start (attempt ${attempt}).`);
+    await new Promise((resolve) => setTimeout(resolve, 5_000));
+  }
+  throw new Error("Zot did not reach a running state within 10 minutes.");
+}
+
+export async function ensureDokployMainProject(
+  configuration: DokployConfiguration,
+) {
+  const projects = await loadProjects(configuration);
+  const mainProject = projects.find(
     (project) => project.name.trim().toLowerCase() === "main",
   );
-  let environmentId = mainProject?.environments.find(
-    (environment) => environment.name.trim().toLowerCase() === "production",
-  )?.environmentId ?? mainProject?.environments[0]?.environmentId ?? "";
-  const projectCreated = !mainProject;
+  if (mainProject)
+    return { created: false, projectId: mainProject.projectId } as const;
 
-  if (!mainProject) {
-    const created = await dokployPostWithConfiguration<unknown>(
-      input.configuration,
-      "project.create",
-      { name: "main" },
-    );
-    const ids = createdProjectIds(created);
-    if (!ids.projectId || !ids.environmentId) {
-      throw new Error("Dokploy did not return the new main project environment.");
-    }
-    mainProject = {
-      projectId: ids.projectId,
-      name: "main",
-      description: null,
-      createdAt: "",
-      env: "",
-      environments: [],
-    };
-    environmentId = ids.environmentId;
+  const created = await dokployPostWithConfiguration<unknown>(
+    configuration,
+    "project.create",
+    { name: "main" },
+  );
+  const ids = createdProjectIds(created);
+  if (!ids.projectId || !ids.environmentId) {
+    throw new Error("Dokploy did not return the new main project environment.");
   }
+  return { created: true, projectId: ids.projectId } as const;
+}
+
+export async function deployDokployZotRegistry(input: ZotBootstrapInput) {
+  const projects = await loadProjects(input.configuration);
+  const existingZot = findZot(projects);
+  if (existingZot) {
+    await waitForZotRunning(input, existingZot.id);
+    return { created: false } as const;
+  }
+
+  const mainProject = projects.find(
+    (project) => project.name.trim().toLowerCase() === "main",
+  );
+  if (!mainProject) {
+    throw new Error("Create the main project before deploying Zot.");
+  }
+  const environmentId =
+    mainProject.environments.find(
+      (environment) => environment.name.trim().toLowerCase() === "production",
+    )?.environmentId ??
+    mainProject.environments[0]?.environmentId ??
+    "";
   if (!environmentId) {
     throw new Error("The main project has no environment for Zot.");
   }
@@ -125,8 +188,10 @@ export async function ensureDokployZotRegistry(input: {
     },
   );
   const composeId = createdComposeId(created);
-  if (!composeId) throw new Error("Dokploy did not return the new Zot Compose ID.");
+  if (!composeId)
+    throw new Error("Dokploy did not return the new Zot Compose ID.");
 
+  let deploymentQueued = false;
   try {
     await dokployPostWithConfiguration(input.configuration, "compose.update", {
       composeId,
@@ -151,18 +216,22 @@ export async function ensureDokployZotRegistry(input: {
     await dokployPostWithConfiguration(input.configuration, "compose.deploy", {
       composeId,
     });
+    deploymentQueued = true;
+    input.onStatus?.("Zot deployment queued; waiting for the service to run.");
+    await waitForZotRunning(input, composeId);
   } catch (error) {
-    await dokployPostWithConfiguration(
-      input.configuration,
-      "compose.delete",
-      { composeId, deleteVolumes: false },
-    ).catch(() => {});
+    if (!deploymentQueued) {
+      await dokployPostWithConfiguration(
+        input.configuration,
+        "compose.delete",
+        { composeId, deleteVolumes: false },
+      ).catch(() => {});
+    }
     throw error;
   }
 
   return {
     created: true,
-    projectCreated,
     projectId: mainProject.projectId,
     composeId,
   } as const;

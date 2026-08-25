@@ -14,8 +14,10 @@ import {
   normalizeRootDomain,
   updateDokployInstance,
 } from "@/lib/storage/dokploy-instances";
-import { bootstrapDokployVps } from "@/lib/vps/bootstrap-dokploy";
-import { getDokployProvisioningJob } from "@/lib/storage/dokploy-provisioning";
+import {
+  getDokployProvisioningJob,
+  startDokployProvisioningJob,
+} from "@/lib/storage/dokploy-provisioning";
 import {
   requireAuthenticatedSession,
   SESSION_EXPIRED_STATE,
@@ -121,18 +123,13 @@ export async function createDokployInstanceAction(
   if (!(await requireAuthenticatedSession())) return SESSION_EXPIRED_STATE;
 
   const submittedIpAddress = formData.get("ipAddress")?.toString().trim() ?? "";
-  const submittedApiKey = formData.get("apiKey")?.toString().trim() ?? "";
-  const bootstrapRequested = !submittedApiKey;
-  const parsed = parseInstanceForm(formData, "", bootstrapRequested);
+  const parsed = parseInstanceForm(formData, "", true);
   if ("status" in parsed) return parsed;
 
   if (submittedIpAddress && !isIP(submittedIpAddress)) {
     return { status: "error", message: "Enter a valid VPS IP address." };
   }
-  if (
-    bootstrapRequested &&
-    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(parsed.defaultServiceUsername)
-  ) {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(parsed.defaultServiceUsername)) {
     return {
       status: "error",
       message:
@@ -143,25 +140,20 @@ export async function createDokployInstanceAction(
   try {
     const ipAddress =
       submittedIpAddress || (await resolveVpsIp(parsed.rootDomain));
-    const bootstrapped = bootstrapRequested
-      ? await bootstrapDokployVps({
-          ipAddress,
-          rootDomain: parsed.rootDomain,
-          administratorEmail: parsed.defaultServiceUsername,
-          administratorPassword: parsed.defaultServicePassword,
-          vpsPassword: parsed.defaultServicePassword,
-        })
-      : null;
-    const apiKey = bootstrapped?.apiKey ?? parsed.apiKey;
-    await verifyDokployConnection({
-      baseUrl: parsed.rootUrl,
-      apiKey,
-    });
     const instance = createDokployInstance({
       ...parsed,
-      apiKey,
+      apiKey: "",
       vpsIp: ipAddress,
       vpsPassword: parsed.defaultServicePassword,
+    });
+    startDokployProvisioningJob({
+      instanceId: instance.id,
+      name: parsed.name,
+      rootUrl: parsed.rootUrl,
+      rootDomain: parsed.rootDomain,
+      vpsIp: ipAddress,
+      defaultServiceUsername: parsed.defaultServiceUsername,
+      defaultServicePassword: parsed.defaultServicePassword,
     });
     (await cookies()).set(ACTIVE_DOKPLOY_COOKIE, instance.id, {
       httpOnly: true,
@@ -171,7 +163,7 @@ export async function createDokployInstanceAction(
       maxAge: 60 * 60 * 24 * 365,
     });
     revalidatePath("/", "layout");
-    return { status: "success", message: "Dockploy instance added." };
+    return { status: "success", message: "New instance saved." };
   } catch (error) {
     if (isDuplicateInstanceError(error)) {
       return {
@@ -184,7 +176,7 @@ export async function createDokployInstanceAction(
       message:
         error instanceof Error
           ? error.message
-          : "Unable to connect to Dockploy with that URL and API/CLI key.",
+          : "Unable to save the new instance.",
     };
   }
 }
@@ -199,13 +191,17 @@ export async function selectDokployInstanceAction(instanceId: string) {
       message: "Dockploy instance not found.",
     } as ActionState;
   }
-  (await cookies()).set(ACTIVE_DOKPLOY_COOKIE, instance?.id ?? provisioningJob!.id, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 365,
-  });
+  (await cookies()).set(
+    ACTIVE_DOKPLOY_COOKIE,
+    instance?.id ?? provisioningJob!.id,
+    {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365,
+    },
+  );
   revalidatePath("/", "layout");
   return {
     status: "success",

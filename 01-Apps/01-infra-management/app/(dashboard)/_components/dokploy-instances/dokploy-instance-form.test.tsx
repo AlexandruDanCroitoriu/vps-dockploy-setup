@@ -56,8 +56,24 @@ describe("DokployInstanceForm", () => {
 
   it("uses admin service defaults when adding an instance", () => {
     render(<DokployInstanceForm instance={null} />);
-    expect(screen.getByRole("button", { name: "Copy all logs" })).toBeTruthy();
-    expect(screen.getAllByLabelText(/^Copy .* logs$/)).toHaveLength(9);
+    expect(
+      screen.getByRole("button", { name: "Save new instance" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("Save the instance to enable the first setup step."),
+    ).toBeTruthy();
+    expect(
+      (
+        screen.getByRole("switch", {
+          name: "Continue setup automatically",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(
+      screen
+        .getAllByRole("button", { name: "Run" })
+        .every((button) => (button as HTMLButtonElement).disabled),
+    ).toBe(true);
     expect(
       (screen.getByLabelText("Default email") as HTMLInputElement).value,
     ).toBe("admin");
@@ -67,6 +83,106 @@ describe("DokployInstanceForm", () => {
     expect(
       (screen.getByLabelText("API/CLI key") as HTMLInputElement).readOnly,
     ).toBe(true);
+  });
+
+  it("shows sequential manual setup controls for a saved instance", () => {
+    render(
+      <DokployInstanceForm
+        instance={{
+          id: "instance-1",
+          name: "Production",
+          rootUrl: "https://dockploy.example.com",
+          rootDomain: "example.com",
+          vpsIp: "203.0.113.10",
+          apiKey: "",
+          defaultServiceUsername: "admin@example.com",
+          defaultServicePassword: "password",
+        }}
+        provisioningJob={{
+          id: "job-1",
+          instanceId: "instance-1",
+          name: "Production",
+          rootUrl: "https://dockploy.example.com",
+          rootDomain: "example.com",
+          vpsIp: "203.0.113.10",
+          apiKey: "",
+          defaultServiceUsername: "admin@example.com",
+          defaultServicePassword: "password",
+          status: "waiting",
+          steps: {},
+          logs: {},
+          error: "",
+          updatedAt: new Date().toISOString(),
+        }}
+      />,
+    );
+    expect(
+      screen.getByRole("switch", { name: "Continue setup automatically" }),
+    ).toBeTruthy();
+    const runButtons = screen.getAllByRole("button", { name: "Run" });
+    expect(runButtons).toHaveLength(7);
+    expect((runButtons[0] as HTMLButtonElement).disabled).toBe(false);
+    expect((runButtons[1] as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("keeps completed setup tasks and logs beside the editable instance", () => {
+    const completedSteps = Object.fromEntries(
+      [
+        "updating",
+        "installing",
+        "administrator",
+        "domain",
+        "api-key",
+        "main-project",
+        "zot",
+      ].map((step) => [step, "done"]),
+    );
+    render(
+      <DokployInstanceForm
+        instance={{
+          id: "instance-1",
+          name: "Production",
+          rootUrl: "https://dockploy.example.com",
+          rootDomain: "example.com",
+          vpsIp: "203.0.113.10",
+          apiKey: "api-key",
+          defaultServiceUsername: "admin@example.com",
+          defaultServicePassword: "password",
+        }}
+        provisioningJob={{
+          id: "job-1",
+          instanceId: "instance-1",
+          name: "Production",
+          rootUrl: "https://dockploy.example.com",
+          rootDomain: "example.com",
+          vpsIp: "203.0.113.10",
+          apiKey: "api-key",
+          defaultServiceUsername: "admin@example.com",
+          defaultServicePassword: "password",
+          status: "complete",
+          steps: completedSteps,
+          logs: { zot: ["Deployment queued."] },
+          error: "",
+          updatedAt: new Date().toISOString(),
+        }}
+      />,
+    );
+    expect(
+      screen.getByText(
+        "Setup completed. Review the status and logs for each step.",
+      ),
+    ).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Completed" })).toHaveLength(
+      7,
+    );
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Verify and save changes",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+    expect(screen.getByText("Deployment queued.")).toBeTruthy();
   });
 
   it("uses environment-backed defaults when adding an instance", () => {

@@ -3,12 +3,12 @@ import { authOptions } from "@/auth";
 import {
   getActiveDokployInstanceSummary,
   getActiveDokployInstanceId,
+  getActiveDokployProvisioningJob,
   getDokployInstanceSummaries,
   getDokployProjects,
   getServiceTypeLabel,
   isDatabaseService,
 } from "@/lib/dokploy";
-import { getLatestDokployProvisioningJob } from "@/lib/storage/dokploy-provisioning";
 import { getDokployInstanceSummary } from "@/lib/storage/dokploy-instances";
 import {
   DashboardShell,
@@ -23,12 +23,19 @@ export default async function DashboardLayout({
   const storedInstances = getDokployInstanceSummaries();
   const selectedInstance = await getActiveDokployInstanceSummary();
   const activeInstanceId = await getActiveDokployInstanceId();
-  const provisioningJob = getLatestDokployProvisioningJob();
+  const provisioningJob = await getActiveDokployProvisioningJob();
   const activeInstance =
     selectedInstance ??
     (provisioningJob?.id === activeInstanceId && provisioningJob.instanceId
       ? getDokployInstanceSummary(provisioningJob.instanceId)
       : null);
+  const activeProvisioning =
+    provisioningJob?.status !== "complete" &&
+    (provisioningJob?.id === activeInstanceId ||
+      provisioningJob?.instanceId === activeInstance?.id);
+  const dokployReady =
+    Boolean(activeInstance) &&
+    (!activeProvisioning || provisioningJob?.steps["api-key"] === "done");
   const provisioningHasInstance =
     provisioningJob &&
     (Boolean(provisioningJob.instanceId) ||
@@ -51,7 +58,7 @@ export default async function DashboardLayout({
     : storedInstances;
   const [session, result] = await Promise.all([
     getServerSession(authOptions),
-    activeInstance
+    dokployReady
       ? getDokployProjects().then(
           (projects) => ({ projects, error: "" }),
           () => ({ projects: [], error: "Unable to load projects." }),
@@ -80,7 +87,7 @@ export default async function DashboardLayout({
       initialProjectsError={result.error}
       instances={instances}
       activeInstanceId={activeInstance?.id ?? activeInstanceId}
-      dokployAvailable={Boolean(activeInstance)}
+      dokployAvailable={dokployReady}
       userName={session?.user?.name || "Administrator"}
     >
       {children}

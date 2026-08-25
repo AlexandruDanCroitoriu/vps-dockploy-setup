@@ -1,12 +1,10 @@
 export const DOKPLOY_BOOTSTRAP_STEPS = [
-  "connecting",
   "updating",
   "installing",
-  "starting",
   "administrator",
   "domain",
   "api-key",
-  "verifying",
+  "main-project",
   "zot",
 ] as const;
 

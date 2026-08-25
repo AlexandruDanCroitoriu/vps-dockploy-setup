@@ -40,6 +40,7 @@ describe("service template route", () => {
       id: "instance-1",
       name: "Dokploy",
       rootUrl: "https://example.com",
+      apiBaseUrl: "https://example.com",
       apiKey: "secret",
       rootDomain: "example.com",
       vpsIp: "203.0.113.10",

@@ -120,7 +120,10 @@ prefix.
 
 ### Bootstrap a new VPS
 
-The Add Dockploy instance form can provision a new Ubuntu or Debian VPS. Create
+The Add Dockploy instance form can provision a new Ubuntu or Debian VPS. Saving
+the form stores the instance before provisioning begins. The setup panel then
+enables one sequential step at a time; run each step manually, or enable
+Automatic to continue with each next step after the previous one succeeds. Create
 the Cloudflare DNS record for `dockploy.<root-domain>` first, then leave the
 API/CLI key empty. The local server uses the default service password for root
 SSH, resolves the VPS IP from the domain,
