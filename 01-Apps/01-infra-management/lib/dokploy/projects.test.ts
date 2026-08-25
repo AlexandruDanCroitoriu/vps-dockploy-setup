@@ -21,7 +21,11 @@ describe("project loading", () => {
           projectId: "project-1",
           name: "Project",
           environments: [
-            { environmentId: "env-1", name: "Production", postgres: [{ postgresId: "pg-1" }] },
+            {
+              environmentId: "env-1",
+              name: "Production",
+              postgres: [{ postgresId: "pg-1" }],
+            },
           ],
         },
       ])

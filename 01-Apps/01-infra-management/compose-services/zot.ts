@@ -15,14 +15,8 @@ export function buildZotEnvironment(username: string, password: string) {
 
   return [
     environmentLine("ZOT_HTPASSWD", `${username}:${hashSync(password, 12)}`),
-    environmentLine(
-      "ZOT_SESSION_HASH_KEY",
-      randomBytes(32).toString("hex"),
-    ),
-    environmentLine(
-      "ZOT_SESSION_ENCRYPT_KEY",
-      randomBytes(16).toString("hex"),
-    ),
+    environmentLine("ZOT_SESSION_HASH_KEY", randomBytes(32).toString("hex")),
+    environmentLine("ZOT_SESSION_ENCRYPT_KEY", randomBytes(16).toString("hex")),
   ].join("\n");
 }
 

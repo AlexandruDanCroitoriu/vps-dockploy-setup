@@ -11,6 +11,9 @@ import {
   type DokployBootstrapStep,
 } from "@/lib/vps/bootstrap-progress";
 import {
+  beginDokployProvisioningStep,
+  completeDokployProvisioningStep,
+  failDokployProvisioningStep,
   getDokployProvisioningJob,
   updateDokployProvisioningJob,
 } from "@/lib/storage/dokploy-provisioning";
@@ -24,9 +27,6 @@ type BootstrapRequest = {
 };
 
 async function executeSavedStep(jobId: string, requestedStep: string) {
-  const job = getDokployProvisioningJob(jobId);
-  if (!job)
-    return Response.json({ message: "Setup was not found." }, { status: 404 });
   const step = requestedStep as DokployBootstrapStep;
   if (!DOKPLOY_BOOTSTRAP_STEPS.includes(step)) {
     return Response.json(
@@ -34,16 +34,23 @@ async function executeSavedStep(jobId: string, requestedStep: string) {
       { status: 400 },
     );
   }
-  const nextStep = DOKPLOY_BOOTSTRAP_STEPS.find(
-    (candidate) => job.steps[candidate] !== "done",
-  );
-  if (step !== nextStep) {
+  const started = beginDokployProvisioningStep(jobId, step);
+  if (started.status === "not-found") {
+    return Response.json({ message: "Setup was not found." }, { status: 404 });
+  }
+  if (started.status === "busy") {
+    return Response.json(
+      { message: "A setup step is already running." },
+      { status: 409 },
+    );
+  }
+  if (started.status === "out-of-order") {
     return Response.json(
       { message: "Complete the current setup step first." },
       { status: 409 },
     );
   }
-  updateDokployProvisioningJob(job.id, { status: "running", error: "" });
+  const job = started.job;
   const setupConfiguration = {
     baseUrl: `http://${job.vpsIp}:3000`,
     apiKey: job.apiKey,
@@ -53,24 +60,20 @@ async function executeSavedStep(jobId: string, requestedStep: string) {
     status: "running" | "done" | "error",
     message?: string,
   ) => {
+    if (status === "running") return;
     updateDokployProvisioningJob(job.id, {
       step: currentStep,
       stepStatus: status,
       log: {
         step: currentStep,
         message:
-          status === "running"
-            ? "Step started."
-            : status === "done"
-              ? "Step completed."
-              : message || "Step failed.",
+          status === "done" ? "Step completed." : message || "Step failed.",
       },
       ...(status === "error" ? { error: message || "This step failed." } : {}),
     });
   };
   try {
     if (step === "main-project") {
-      progress(step, "running");
       const project = await ensureDokployMainProject(setupConfiguration);
       updateDokployProvisioningJob(job.id, {
         log: {
@@ -80,9 +83,7 @@ async function executeSavedStep(jobId: string, requestedStep: string) {
             : "Existing Main project reused.",
         },
       });
-      progress(step, "done");
     } else if (step === "zot") {
-      progress(step, "running");
       const zot = await deployDokployZotRegistry({
         configuration: setupConfiguration,
         rootDomain: job.rootDomain,
@@ -102,7 +103,6 @@ async function executeSavedStep(jobId: string, requestedStep: string) {
             : "Existing running Zot service reused.",
         },
       });
-      progress(step, "done");
     } else {
       await runDokployBootstrapStep(
         {
@@ -126,9 +126,6 @@ async function executeSavedStep(jobId: string, requestedStep: string) {
       );
     }
     const updatedJob = getDokployProvisioningJob(job.id)!;
-    const complete = DOKPLOY_BOOTSTRAP_STEPS.every(
-      (candidate) => updatedJob.steps[candidate] === "done",
-    );
     if (updatedJob.instanceId) {
       updateDokployInstance(updatedJob.instanceId, {
         name: updatedJob.name,
@@ -141,18 +138,11 @@ async function executeSavedStep(jobId: string, requestedStep: string) {
         defaultServicePassword: updatedJob.defaultServicePassword,
       });
     }
-    updateDokployProvisioningJob(job.id, {
-      status: complete ? "complete" : "waiting",
-      error: "",
-    });
-    return Response.json(getDokployProvisioningJob(job.id));
+    return Response.json(completeDokployProvisioningStep(job.id, step));
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "VPS setup failed.";
-    if (getDokployProvisioningJob(job.id)?.steps[step] !== "error") {
-      progress(step, "error", message);
-    }
-    updateDokployProvisioningJob(job.id, { status: "failed", error: message });
+    failDokployProvisioningStep(job.id, step, message);
     return Response.json(
       { ...getDokployProvisioningJob(job.id), message },
       { status: 500 },

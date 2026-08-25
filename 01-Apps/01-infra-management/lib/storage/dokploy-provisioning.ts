@@ -5,6 +5,7 @@ import type {
   DokployBootstrapStep,
   DokployBootstrapStepStatus,
 } from "@/lib/vps/bootstrap-progress";
+import { DOKPLOY_BOOTSTRAP_STEPS } from "@/lib/vps/bootstrap-progress";
 import { getDatabase } from "./database";
 
 export type DokployProvisioningJob = {
@@ -55,45 +56,6 @@ function parseJson<T>(value: string, fallback: T): T {
 }
 
 function toJob(row: JobRow): DokployProvisioningJob {
-  const storedSteps = parseJson<Record<string, DokployBootstrapStepStatus>>(
-    row.steps_json,
-    {},
-  );
-  const storedLogs = parseJson<Record<string, string[]>>(row.logs_json, {});
-  if (storedSteps.starting && storedSteps.starting !== "done") {
-    storedSteps.installing = storedSteps.starting;
-  }
-  if (storedLogs.starting?.length) {
-    storedLogs.installing = [
-      ...(storedLogs.installing ?? []),
-      ...storedLogs.starting,
-    ].slice(-200);
-  }
-  if (
-    row.status !== "complete" &&
-    Object.hasOwn(storedSteps, "verifying") &&
-    storedSteps["api-key"] === "done" &&
-    storedSteps.verifying !== "done"
-  ) {
-    delete storedSteps["api-key"];
-  }
-  if (storedLogs.verifying?.length) {
-    storedLogs["api-key"] = [
-      ...(storedLogs["api-key"] ?? []),
-      ...storedLogs.verifying,
-    ].slice(-200);
-  }
-  if (row.status === "failed") {
-    for (const [step, status] of Object.entries(storedSteps)) {
-      if (status === "running") storedSteps[step] = "error";
-    }
-  }
-  delete storedSteps.connecting;
-  delete storedSteps.starting;
-  delete storedLogs.connecting;
-  delete storedLogs.starting;
-  delete storedSteps.verifying;
-  delete storedLogs.verifying;
   return {
     id: row.id,
     instanceId: row.instance_id ?? "",
@@ -105,8 +67,8 @@ function toJob(row: JobRow): DokployProvisioningJob {
     defaultServicePassword: row.default_service_password,
     apiKey: row.api_key,
     status: row.status,
-    steps: storedSteps,
-    logs: storedLogs,
+    steps: parseJson(row.steps_json, {}),
+    logs: parseJson(row.logs_json, {}),
     error: row.error,
     updatedAt: row.updated_at,
   };
@@ -211,4 +173,67 @@ export function updateDokployProvisioningJob(
       id,
     );
   return getDokployProvisioningJob(id);
+}
+
+export type BeginProvisioningStepResult =
+  | { status: "started"; job: DokployProvisioningJob }
+  | { status: "not-found" }
+  | { status: "busy" }
+  | { status: "out-of-order" };
+
+export function beginDokployProvisioningStep(
+  id: string,
+  step: DokployBootstrapStep,
+): BeginProvisioningStepResult {
+  return getDatabase().transaction(() => {
+    const job = getDokployProvisioningJob(id);
+    if (!job) return { status: "not-found" } as const;
+    if (job.status === "running") return { status: "busy" } as const;
+    const nextStep = DOKPLOY_BOOTSTRAP_STEPS.find(
+      (candidate) => job.steps[candidate] !== "done",
+    );
+    if (step !== nextStep) return { status: "out-of-order" } as const;
+    const started = updateDokployProvisioningJob(id, {
+      status: "running",
+      error: "",
+      step,
+      stepStatus: "running",
+      log: { step, message: "Step started." },
+    });
+    return { status: "started", job: started! } as const;
+  })();
+}
+
+export function completeDokployProvisioningStep(
+  id: string,
+  step: DokployBootstrapStep,
+) {
+  updateDokployProvisioningJob(id, {
+    step,
+    stepStatus: "done",
+    log: { step, message: "Step completed." },
+  });
+  const job = getDokployProvisioningJob(id);
+  if (!job) return null;
+  const complete = DOKPLOY_BOOTSTRAP_STEPS.every(
+    (candidate) => job.steps[candidate] === "done",
+  );
+  return updateDokployProvisioningJob(id, {
+    status: complete ? "complete" : "waiting",
+    error: "",
+  });
+}
+
+export function failDokployProvisioningStep(
+  id: string,
+  step: DokployBootstrapStep,
+  message: string,
+) {
+  return updateDokployProvisioningJob(id, {
+    status: "failed",
+    error: message,
+    step,
+    stepStatus: "error",
+    log: { step, message },
+  });
 }

@@ -4,6 +4,9 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { closeDatabaseForTests } from "./database";
 import {
+  beginDokployProvisioningStep,
+  completeDokployProvisioningStep,
+  failDokployProvisioningStep,
   getDokployProvisioningJob,
   startDokployProvisioningJob,
   updateDokployProvisioningJob,
@@ -35,6 +38,32 @@ const input = {
 };
 
 describe("Dokploy provisioning persistence", () => {
+  it("enforces sequential and exclusive setup transitions", () => {
+    const job = startDokployProvisioningJob(input);
+    expect(beginDokployProvisioningStep(job.id, "updating").status).toBe(
+      "started",
+    );
+    expect(beginDokployProvisioningStep(job.id, "updating").status).toBe(
+      "busy",
+    );
+    completeDokployProvisioningStep(job.id, "updating");
+    expect(beginDokployProvisioningStep(job.id, "installing").status).toBe(
+      "started",
+    );
+    failDokployProvisioningStep(job.id, "installing", "SSH failed.");
+    expect(getDokployProvisioningJob(job.id)).toMatchObject({
+      status: "failed",
+      error: "SSH failed.",
+      steps: { updating: "done", installing: "error" },
+    });
+    expect(beginDokployProvisioningStep(job.id, "administrator").status).toBe(
+      "out-of-order",
+    );
+    expect(beginDokployProvisioningStep(job.id, "installing").status).toBe(
+      "started",
+    );
+  });
+
   it("keeps the combined API-key generation and verification step completed", () => {
     const job = startDokployProvisioningJob(input);
     updateDokployProvisioningJob(job.id, {

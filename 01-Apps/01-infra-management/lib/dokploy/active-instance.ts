@@ -55,16 +55,10 @@ export const getActiveDokployConfiguration = cache(async () => {
 function withOperationalApiUrl(
   instance: NonNullable<ReturnType<typeof getDokployInstance>>,
 ) {
-  const job = getDokployProvisioningJobByInstanceId(instance.id);
-  const useSetupAddress =
-    job?.status !== "complete" &&
-    job?.steps["api-key"] === "done" &&
-    Boolean(instance.vpsIp);
   return {
     ...instance,
-    apiBaseUrl: useSetupAddress
-      ? `http://${instance.vpsIp}:3000`
-      : instance.rootUrl,
+    apiBaseUrl: instance.rootUrl,
+    apiFallbackUrl: instance.vpsIp ? `http://${instance.vpsIp}:3000` : null,
   };
 }
 

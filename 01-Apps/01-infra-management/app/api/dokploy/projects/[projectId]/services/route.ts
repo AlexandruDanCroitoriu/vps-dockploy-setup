@@ -43,5 +43,7 @@ export async function POST(
     );
   }
 
-  return Response.json(result, { status: result.status === "error" ? 422 : 200 });
+  return Response.json(result, {
+    status: result.status === "error" ? 422 : 200,
+  });
 }

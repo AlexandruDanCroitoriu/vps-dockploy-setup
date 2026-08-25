@@ -309,7 +309,10 @@ export async function runDokployBootstrapStep(
         );
         onLog(
           "domain",
-          `Configured ${rootUrl}; DNS and certificate availability will be checked after setup.`,
+          `Configured ${rootUrl}; waiting for DNS, routing, and a trusted TLS certificate.`,
+        );
+        await waitForUrl(rootUrl, 10 * 60 * 1_000, (message) =>
+          onLog("domain", message),
         );
       });
 

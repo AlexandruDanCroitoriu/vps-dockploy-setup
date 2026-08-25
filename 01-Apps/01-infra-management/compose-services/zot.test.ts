@@ -7,12 +7,8 @@ import { buildZotEnvironment, zotService } from "./zot";
 describe("Zot Compose definition", () => {
   it("runs the official Zot image with authenticated persistent storage and UI", () => {
     expect(zotService.name).toBe("Zot");
-    expect(zotService.composeFile).toContain(
-      "ghcr.io/project-zot/zot:v2.1.20",
-    );
-    expect(zotService.composeFile).toContain(
-      "zot-data:/var/lib/registry",
-    );
+    expect(zotService.composeFile).toContain("ghcr.io/project-zot/zot:v2.1.20");
+    expect(zotService.composeFile).toContain("zot-data:/var/lib/registry");
     expect(zotService.composeFile).toContain(
       '"htpasswd": { "path": "/etc/zot/htpasswd" }',
     );
@@ -44,7 +40,10 @@ describe("Zot Compose definition", () => {
         .split("\n")
         .map((line) => {
           const separator = line.indexOf("=");
-          return [line.slice(0, separator), JSON.parse(line.slice(separator + 1))];
+          return [
+            line.slice(0, separator),
+            JSON.parse(line.slice(separator + 1)),
+          ];
         }),
     );
     const configBlock = zotService.composeFile
@@ -57,7 +56,10 @@ describe("Zot Compose definition", () => {
     expect(() =>
       JSON.parse(
         configBlock!
-          .replaceAll("${ZOT_SESSION_HASH_KEY}", environment.ZOT_SESSION_HASH_KEY)
+          .replaceAll(
+            "${ZOT_SESSION_HASH_KEY}",
+            environment.ZOT_SESSION_HASH_KEY,
+          )
           .replaceAll(
             "${ZOT_SESSION_ENCRYPT_KEY}",
             environment.ZOT_SESSION_ENCRYPT_KEY,

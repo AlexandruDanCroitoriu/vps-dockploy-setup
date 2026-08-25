@@ -55,7 +55,10 @@ export async function GET(
     !serviceId ||
     !DOKPLOY_SERVICE_TYPES.includes(serviceType as DokployServiceType)
   ) {
-    return Response.json({ error: "Invalid project service." }, { status: 400 });
+    return Response.json(
+      { error: "Invalid project service." },
+      { status: 400 },
+    );
   }
 
   try {

@@ -27,7 +27,10 @@ export function notifyProjectsChanged() {
   window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT));
 }
 
-export function notifyProjectServiceDeleted(projectId: string, serviceId: string) {
+export function notifyProjectServiceDeleted(
+  projectId: string,
+  serviceId: string,
+) {
   window.dispatchEvent(
     new CustomEvent(PROJECT_SERVICE_DELETED_EVENT, {
       detail: { projectId, serviceId },
@@ -64,8 +67,7 @@ export async function submitProjectServiceCreation(
       error?: string;
     };
     return {
-      status:
-        response.ok && result.status === "success" ? "success" : "error",
+      status: response.ok && result.status === "success" ? "success" : "error",
       message:
         result.message ?? result.error ?? "Unable to create the service.",
       createdService: result.createdService,

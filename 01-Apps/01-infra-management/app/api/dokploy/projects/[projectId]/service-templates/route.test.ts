@@ -41,6 +41,7 @@ describe("service template route", () => {
       name: "Dokploy",
       rootUrl: "https://example.com",
       apiBaseUrl: "https://example.com",
+      apiFallbackUrl: "http://203.0.113.10:3000",
       apiKey: "secret",
       rootDomain: "example.com",
       vpsIp: "203.0.113.10",

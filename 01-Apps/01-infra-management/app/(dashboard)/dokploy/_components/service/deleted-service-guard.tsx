@@ -19,10 +19,12 @@ export function DeletedServiceGuard({
 
   useEffect(() => {
     function handleDeleted(event: Event) {
-      const detail = (event as CustomEvent<{
-        projectId: string;
-        serviceId: string;
-      }>).detail;
+      const detail = (
+        event as CustomEvent<{
+          projectId: string;
+          serviceId: string;
+        }>
+      ).detail;
       if (detail.projectId === projectId && detail.serviceId === serviceId) {
         setDeleted(true);
       }

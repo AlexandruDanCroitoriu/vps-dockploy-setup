@@ -11,6 +11,9 @@ The Add application dropdown discovers directories under `01-Apps`; selecting on
 - Server-only Dokploy API integration under `lib/dokploy/`
 - Tailwind CSS 4, Headless UI, Monaco Editor, and React Log Viewer
 
+The provisioning state sequence, operational URL rules, persistence boundaries,
+and code ownership are documented in [docs/instance-lifecycle.md](docs/instance-lifecycle.md).
+
 ## Required environment variables
 
 Copy `.env.example` to `.env.local` for local development and configure:

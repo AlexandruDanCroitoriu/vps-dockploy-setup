@@ -117,7 +117,9 @@ describe("SQLite migrations", () => {
       { version: 3 },
       { version: 4 },
       { version: 5 },
-      { version: 6 }, { version: 7 },
+      { version: 6 },
+      { version: 7 },
+      { version: 8 },
     ]);
   });
 
@@ -140,7 +142,9 @@ describe("SQLite migrations", () => {
       { version: 3 },
       { version: 4 },
       { version: 5 },
-      { version: 6 }, { version: 7 },
+      { version: 6 },
+      { version: 7 },
+      { version: 8 },
     ]);
   });
 
@@ -169,7 +173,9 @@ describe("SQLite migrations", () => {
       { version: 3 },
       { version: 4 },
       { version: 5 },
-      { version: 6 }, { version: 7 },
+      { version: 6 },
+      { version: 7 },
+      { version: 8 },
     ]);
   });
 
@@ -192,7 +198,9 @@ describe("SQLite migrations", () => {
       { version: 3 },
       { version: 4 },
       { version: 5 },
-      { version: 6 }, { version: 7 },
+      { version: 6 },
+      { version: 7 },
+      { version: 8 },
     ]);
   });
 
@@ -215,7 +223,9 @@ describe("SQLite migrations", () => {
       { version: 3 },
       { version: 4 },
       { version: 5 },
-      { version: 6 }, { version: 7 },
+      { version: 6 },
+      { version: 7 },
+      { version: 8 },
     ]);
   });
 
@@ -223,10 +233,51 @@ describe("SQLite migrations", () => {
     const db = versionSixDatabase();
     runMigrations(db);
     expect(
-      db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(
-        "dokploy_provisioning_jobs",
-      ),
+      db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?")
+        .get("dokploy_provisioning_jobs"),
     ).toEqual({ name: "dokploy_provisioning_jobs" });
+    expect(() => runMigrations(db)).not.toThrow();
+  });
+
+  it("upgrades legacy provisioning step state from version seven", () => {
+    const db = versionOneDatabase();
+    runMigrations(db);
+    db.prepare("DELETE FROM schema_migrations WHERE version = 8").run();
+    const now = new Date().toISOString();
+    db.prepare(
+      `INSERT INTO dokploy_provisioning_jobs
+      (id, name, root_url, root_domain, vps_ip, vps_password,
+       default_service_username, default_service_password, status,
+       steps_json, logs_json, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      "job-1",
+      "Production",
+      "https://dockploy.example.com",
+      "example.com",
+      "203.0.113.10",
+      "password",
+      "admin@example.com",
+      "password",
+      "failed",
+      JSON.stringify({
+        connecting: "done",
+        installing: "done",
+        starting: "error",
+        "api-key": "done",
+        verifying: "error",
+      }),
+      JSON.stringify({}),
+      now,
+      now,
+    );
+
+    runMigrations(db);
+    const row = db
+      .prepare("SELECT steps_json FROM dokploy_provisioning_jobs WHERE id = ?")
+      .get("job-1") as { steps_json: string };
+    expect(JSON.parse(row.steps_json)).toEqual({ installing: "error" });
     expect(() => runMigrations(db)).not.toThrow();
   });
 
@@ -236,6 +287,6 @@ describe("SQLite migrations", () => {
     expect(() => runMigrations(db)).not.toThrow();
     expect(
       db.prepare("SELECT COUNT(*) count FROM schema_migrations").get(),
-    ).toEqual({ count: 7 });
+    ).toEqual({ count: 8 });
   });
 });

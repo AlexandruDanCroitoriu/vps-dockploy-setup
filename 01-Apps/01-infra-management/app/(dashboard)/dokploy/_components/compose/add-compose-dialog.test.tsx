@@ -37,7 +37,9 @@ describe("AddComposeDialog", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Add Compose service" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Add Compose service" }),
+    );
 
     const zotButton = screen.getByRole("button", { name: /Zot/ });
     expect(zotButton).toBeDisabled();

@@ -42,11 +42,21 @@ export async function dokployRequestWithConfiguration(
 export async function dokployRequest(endpoint: string, init?: RequestInit) {
   const instance = await getActiveDokployConfiguration();
   if (!instance) throw new NoActiveDokployInstanceError();
-  return dokployRequestWithConfiguration(
-    { baseUrl: instance.apiBaseUrl, apiKey: instance.apiKey },
-    endpoint,
-    init,
-  );
+  try {
+    return await dokployRequestWithConfiguration(
+      { baseUrl: instance.apiBaseUrl, apiKey: instance.apiKey },
+      endpoint,
+      init,
+    );
+  } catch (error) {
+    if (!instance.apiFallbackUrl || error instanceof DokployApiError)
+      throw error;
+    return dokployRequestWithConfiguration(
+      { baseUrl: instance.apiFallbackUrl, apiKey: instance.apiKey },
+      endpoint,
+      init,
+    );
+  }
 }
 
 export async function verifyDokployConnection(configuration: {

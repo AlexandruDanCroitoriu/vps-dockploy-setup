@@ -56,6 +56,44 @@ const migrations = [
       FOREIGN KEY (instance_id) REFERENCES dokploy_instances(id) ON DELETE SET NULL
     );
   `,
+  `
+    UPDATE dokploy_provisioning_jobs
+    SET steps_json = json_remove(
+      CASE
+        WHEN json_type(steps_json, '$.starting') IS NOT NULL
+          AND json_extract(steps_json, '$.starting') <> 'done'
+        THEN json_set(steps_json, '$.installing', json_extract(steps_json, '$.starting'))
+        ELSE steps_json
+      END,
+      '$.connecting', '$.starting'
+    );
+
+    UPDATE dokploy_provisioning_jobs
+    SET steps_json = json_remove(
+      CASE
+        WHEN status <> 'complete'
+          AND json_type(steps_json, '$.verifying') IS NOT NULL
+          AND json_extract(steps_json, '$."api-key"') = 'done'
+          AND json_extract(steps_json, '$.verifying') <> 'done'
+        THEN json_remove(steps_json, '$."api-key"')
+        ELSE steps_json
+      END,
+      '$.verifying'
+    );
+
+    UPDATE dokploy_provisioning_jobs
+    SET steps_json = json_replace(
+      steps_json,
+      '$.updating', CASE WHEN json_extract(steps_json, '$.updating') = 'running' THEN 'error' ELSE json_extract(steps_json, '$.updating') END,
+      '$.installing', CASE WHEN json_extract(steps_json, '$.installing') = 'running' THEN 'error' ELSE json_extract(steps_json, '$.installing') END,
+      '$.administrator', CASE WHEN json_extract(steps_json, '$.administrator') = 'running' THEN 'error' ELSE json_extract(steps_json, '$.administrator') END,
+      '$.domain', CASE WHEN json_extract(steps_json, '$.domain') = 'running' THEN 'error' ELSE json_extract(steps_json, '$.domain') END,
+      '$."api-key"', CASE WHEN json_extract(steps_json, '$."api-key"') = 'running' THEN 'error' ELSE json_extract(steps_json, '$."api-key"') END,
+      '$."main-project"', CASE WHEN json_extract(steps_json, '$."main-project"') = 'running' THEN 'error' ELSE json_extract(steps_json, '$."main-project"') END,
+      '$.zot', CASE WHEN json_extract(steps_json, '$.zot') = 'running' THEN 'error' ELSE json_extract(steps_json, '$.zot') END
+    )
+    WHERE status = 'failed';
+  `,
 ] as const;
 
 export function runMigrations(database: Database.Database) {
