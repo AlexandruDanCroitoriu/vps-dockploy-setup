@@ -4,9 +4,11 @@ vi.mock("server-only", () => ({}));
 
 import {
   deleteZotRegistryImage,
+  getFreshZotRegistryImages,
   getZotRegistryImages,
   invalidateZotRegistryMemoryState,
   normalizeZotRegistryImages,
+  removeCurrentZotRegistryImage,
 } from "./registry-images";
 
 afterEach(() => {
@@ -104,5 +106,66 @@ describe("Zot registry image normalization", () => {
     invalidateZotRegistryMemoryState(registry.host);
     await getZotRegistryImages(registry, "infra-management");
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("always reloads fresh image versions for project page renders", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(
+        async () =>
+          new Response(
+            JSON.stringify({ data: { ImageList: { Results: [] } } }),
+          ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const registry = {
+      host: "fresh-zot.example.com",
+      username: "operator",
+      password: "registry-password",
+    };
+
+    await getFreshZotRegistryImages(registry, "infra-management");
+    await getFreshZotRegistryImages(registry, "infra-management");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("removes the current tag before a replacement image is pushed", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: {
+              ImageList: {
+                Results: [
+                  {
+                    RepoName: "infra-management",
+                    Tag: "latest",
+                    Digest: "sha256:old",
+                    TaggedTimestamp: "2026-08-27T10:00:00Z",
+                  },
+                ],
+              },
+            },
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 202 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const registry = {
+      host: "replace-zot.example.com",
+      username: "operator",
+      password: "registry-password",
+    };
+
+    await expect(
+      removeCurrentZotRegistryImage(registry, "infra-management"),
+    ).resolves.toBe(true);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "https://replace-zot.example.com/v2/infra-management/manifests/latest",
+      expect.objectContaining({ method: "DELETE" }),
+    );
   });
 });

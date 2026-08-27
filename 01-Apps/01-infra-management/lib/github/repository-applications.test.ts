@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   getRepositoryApplications,
   getRepositoryApplicationsResult,
-  getRepositoryApplicationDefaultHost,
   isRepositoryApplicationDeployed,
   matchesRepositoryApplicationInput,
 } from "./repository-applications";
@@ -26,14 +25,6 @@ describe("repository application discovery", () => {
       applications: [expect.objectContaining({ name: "01-infra-management" })],
       error: "",
     });
-  });
-
-  it("defaults Infra Management to the instance root domain", async () => {
-    const [application] = await getRepositoryApplications();
-
-    expect(
-      getRepositoryApplicationDefaultHost(application, "infra.example.com"),
-    ).toBe("infra.example.com");
   });
 
   it("detects a repository application anywhere on the instance", async () => {

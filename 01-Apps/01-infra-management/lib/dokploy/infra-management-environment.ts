@@ -4,6 +4,21 @@ function environmentLine(name: string, value: string) {
   return `${name}=${JSON.stringify(value)}`;
 }
 
+export function resolveInfraManagementHostname(
+  subdomain: string,
+  rootDomain: string,
+) {
+  const root = rootDomain
+    .trim()
+    .toLowerCase()
+    .replace(/^\.+|\.+$/g, "");
+  const prefix = subdomain
+    .trim()
+    .toLowerCase()
+    .replace(/^\.+|\.+$/g, "");
+  return prefix ? `${prefix}.${root}` : root;
+}
+
 export function serializeInfraManagementEnvironment(input: {
   username: string;
   password: string;

@@ -1,0 +1,5 @@
+node_modules
+dist
+admin-ui
+static/email/test-emails
+.vendure/

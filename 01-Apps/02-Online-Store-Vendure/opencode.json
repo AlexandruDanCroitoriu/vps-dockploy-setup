@@ -1,0 +1,72 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "AGENTS.md"
+  ],
+  "agent": {
+    "vendure-asistant": {
+      "mode": "primary", 
+      "model": "openai/gpt-5.6-sol",
+      "color": "primary",
+      "description": "Assistant for the user to help with Vendure related questions and tasks. It can also call the vendure-researcher subagent for accurate documentation and research answers.",
+      "prompt": "{file:.opencode/agent-prompts/vendure-assistant.txt}",
+      "temperature": 0.0,
+      "top_p": 0.1,
+      "steps": 30,
+      "disable": false,
+      "permission": {
+        "read": "allow", // The read tool lets an agent inspect file contents without modifying them.
+        "edit": "deny", // The edit tool lets an agent modify file contents.
+        "glob": "allow", // The glob tool lets an agent search for files by name and path.
+        "grep": "allow", // The grep tool lets an agent search for text in files.
+        "list": "allow", // The list tool lets an agent list files and directories.
+        "bash": "deny", // The bash tool lets an agent run bash commands.
+        "task": // The task tool lets an agent create and manage tasks.
+        {
+          "*": "deny",
+          "vendure-researcher": "allow"
+        },
+        "external_directory": "deny", // The external_directory tool lets an agent access files outside of the project directory.
+        "todowrite": "allow", // The todowrite tool creates and updates an agent’s task list.
+        "webfetch": "allow", // The webfetch tool lets an agent fetch content from the web.
+        "websearch": "allow", // The websearch tool lets an agent search the web for information.
+        "lsp": "allow", // The lsp tool lets an agent use a language server to analyze code.
+        "skill": // The skill tool lets an agent use a skill to perform a specific task.
+        {
+          "*": "deny" // Deny all skills
+        },
+        "question": "allow", // The question tool lets an agent ask questions to the user.
+        "doom_loop": "deny" // The doom_loop tool lets an agent enter a self-reinforcing loop of asking questions and answering them.
+      }
+    },
+    "vendure-researcher": {
+      "mode": "subagent",
+      "color": "accent",
+      "hidden": false, // Whether the agent is hidden from the user. Hidden agents are not listed in the agent list and cannot be directly invoked by the user.
+      "model": "openai/gpt-5.6-terra",
+      "description": "Subagent for providing acurate documentation and research answers for other agents when called. Response structure is a JSON object {\"answer\": \"\", \"references\": [\"\"], \"source\": \"\"}",
+      "prompt": "{file:.opencode/agent-prompts/vendure-researcher.txt}",
+      "temperature": 0.0,
+      "top_p": 0.0,
+      "steps": 20,
+      "disable": false,
+      "permission": {
+        "read": "allow",
+        "edit": "deny",
+        "glob": "allow",
+        "grep": "allow",
+        "list": "allow",
+        "bash": "deny",
+        "task": "deny",
+        "external_directory": "deny",
+        "todowrite": "deny",
+        "webfetch": "allow",
+        "websearch": "allow",
+        "lsp": "allow",
+        "skill": "deny",
+        "question": "allow",
+        "doom_loop": "deny" 
+      }
+    }
+  }
+}

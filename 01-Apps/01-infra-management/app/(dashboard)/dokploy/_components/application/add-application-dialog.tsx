@@ -15,10 +15,9 @@ import type {
   DokployApplicationBuildType,
   DokployGithubProvider,
 } from "@/lib/dokploy";
-import {
-  getRepositoryApplicationDefaultHost,
-  type RepositoryApplication,
-  type RepositoryApplicationDeployment,
+import type {
+  RepositoryApplication,
+  RepositoryApplicationDeployment,
 } from "@/lib/github/repository-applications";
 import {
   notifyProjectsChanged,
@@ -85,6 +84,7 @@ export function AddApplicationDialog({
   const [watchPathsEdited, setWatchPathsEdited] = useState(false);
   const [applicationName, setApplicationName] = useState("");
   const [domainHost, setDomainHost] = useState("");
+  const [domainSubdomain, setDomainSubdomain] = useState("");
   const [domainGenerationError, setDomainGenerationError] = useState("");
   const [domainGenerationPending, startDomainGeneration] = useTransition();
   const [state, setState] = useState(initialState);
@@ -157,7 +157,8 @@ export function AddApplicationDialog({
     setWatchPaths(watchPathFor(path));
     setWatchPathsEdited(false);
     setApplicationName(application.name);
-    setDomainHost(getRepositoryApplicationDefaultHost(application, rootDomain));
+    setDomainHost("");
+    setDomainSubdomain("");
     setDomainGenerationError("");
     setIsOpen(true);
   }
@@ -439,44 +440,73 @@ export function AddApplicationDialog({
               </>
             )}
 
-            <FormField
-              label="Domain hostname"
-              htmlFor="app-host"
-              optional
-              className="col-span-full"
-            >
-              <div className="mt-1.5 grid w-full grid-cols-[minmax(0,1fr)_auto] gap-2">
-                <input
-                  id="app-host"
-                  name="host"
-                  type="text"
-                  value={domainHost}
-                  onChange={(event) => {
-                    setDomainHost(event.target.value);
-                    setDomainGenerationError("");
-                  }}
-                  placeholder="app.example.com"
-                  className={`${inputClassName} !mt-0 min-w-0`}
-                />
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={domainGenerationPending || !applicationName.trim()}
-                  onClick={generateDomain}
-                  className="h-full shrink-0"
-                >
-                  {domainGenerationPending ? "Generating…" : "Generate"}
-                </Button>
-              </div>
-              {domainGenerationError && (
-                <p
-                  className="mt-1 text-xs text-red-600 dark:text-red-400"
-                  role="alert"
-                >
-                  {domainGenerationError}
+            {usesInfraManagementDefaults ? (
+              <FormField
+                label="Subdomain"
+                htmlFor="app-subdomain"
+                optional
+                className="col-span-full"
+              >
+                <div className="mt-1.5 flex min-w-0 items-center rounded-md border border-gray-300 bg-white focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-500/20 dark:border-white/10 dark:bg-gray-900">
+                  <input
+                    id="app-subdomain"
+                    name="subdomain"
+                    type="text"
+                    value={domainSubdomain}
+                    onChange={(event) => setDomainSubdomain(event.target.value)}
+                    placeholder="optional"
+                    className="min-w-0 flex-1 border-0 bg-transparent px-3 py-2 text-sm outline-none"
+                  />
+                  <span className="shrink-0 border-l border-gray-200 px-3 text-sm text-gray-500 dark:border-white/10 dark:text-gray-400">
+                    .{rootDomain}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Leave blank to use {rootDomain}.
                 </p>
-              )}
-            </FormField>
+              </FormField>
+            ) : (
+              <FormField
+                label="Domain hostname"
+                htmlFor="app-host"
+                optional
+                className="col-span-full"
+              >
+                <div className="mt-1.5 grid w-full grid-cols-[minmax(0,1fr)_auto] gap-2">
+                  <input
+                    id="app-host"
+                    name="host"
+                    type="text"
+                    value={domainHost}
+                    onChange={(event) => {
+                      setDomainHost(event.target.value);
+                      setDomainGenerationError("");
+                    }}
+                    placeholder="app.example.com"
+                    className={`${inputClassName} !mt-0 min-w-0`}
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={
+                      domainGenerationPending || !applicationName.trim()
+                    }
+                    onClick={generateDomain}
+                    className="h-full shrink-0"
+                  >
+                    {domainGenerationPending ? "Generating…" : "Generate"}
+                  </Button>
+                </div>
+                {domainGenerationError && (
+                  <p
+                    className="mt-1 text-xs text-red-600 dark:text-red-400"
+                    role="alert"
+                  >
+                    {domainGenerationError}
+                  </p>
+                )}
+              </FormField>
+            )}
 
             {usesInfraManagementDefaults ? (
               <input type="hidden" name="port" value="3000" />

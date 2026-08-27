@@ -106,31 +106,40 @@ export async function getZotRegistryImages(
   return getExternalRequestSnapshot(
     getZotMemoryId(registry.host),
     `images:${repository}`,
-    async () => {
-      const response = await fetch(
-        `https://${registry.host}/v2/_zot/ext/search`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Basic ${Buffer.from(`${registry.username}:${registry.password}`).toString("base64")}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            query: imageListQuery,
-            variables: { repository },
-          }),
-          cache: "no-store",
-        },
-      );
-      const payload = (await response
-        .json()
-        .catch(() => null)) as ZotImageListResponse | null;
-      if (!response.ok || !payload || payload.errors?.length) {
-        throw new Error("Unable to load images from Zot.");
-      }
-      return normalizeZotRegistryImages(payload);
-    },
+    () => fetchZotRegistryImages(registry, repository),
   );
+}
+
+export function getFreshZotRegistryImages(
+  registry: ActiveZotRegistry,
+  repository: string,
+) {
+  return fetchZotRegistryImages(registry, repository);
+}
+
+async function fetchZotRegistryImages(
+  registry: ActiveZotRegistry,
+  repository: string,
+) {
+  const response = await fetch(`https://${registry.host}/v2/_zot/ext/search`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${registry.username}:${registry.password}`).toString("base64")}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      query: imageListQuery,
+      variables: { repository },
+    }),
+    cache: "no-store",
+  });
+  const payload = (await response
+    .json()
+    .catch(() => null)) as ZotImageListResponse | null;
+  if (!response.ok || !payload || payload.errors?.length) {
+    throw new Error("Unable to load images from Zot.");
+  }
+  return normalizeZotRegistryImages(payload);
 }
 
 export async function deleteZotRegistryImage(
@@ -161,6 +170,19 @@ export async function deleteZotRegistryImage(
     );
   }
   invalidateZotRegistryMemoryState(registry.host);
+}
+
+export async function removeCurrentZotRegistryImage(
+  registry: ActiveZotRegistry,
+  repository: string,
+) {
+  invalidateZotRegistryMemoryState(registry.host);
+  const current = (await getZotRegistryImages(registry, repository)).find(
+    (image) => image.current,
+  );
+  if (!current) return false;
+  await deleteZotRegistryImage(registry, repository, current.tag);
+  return true;
 }
 
 export function invalidateZotRegistryMemoryState(host: string) {

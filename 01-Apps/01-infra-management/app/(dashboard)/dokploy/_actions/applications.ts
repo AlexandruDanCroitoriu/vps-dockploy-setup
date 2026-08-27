@@ -13,7 +13,10 @@ import {
   isValidPort,
   type DokployApplicationBuildType,
 } from "@/lib/dokploy";
-import { serializeInfraManagementEnvironment } from "@/lib/dokploy/infra-management-environment";
+import {
+  resolveInfraManagementHostname,
+  serializeInfraManagementEnvironment,
+} from "@/lib/dokploy/infra-management-environment";
 import {
   getRepositoryApplications,
   getRepositoryApplicationDeployments,
@@ -130,7 +133,8 @@ export async function createApplicationAction(
   const dockerfile = field(formData, "dockerfile");
   const dockerContextPath = field(formData, "dockerContextPath");
   const publishDirectory = field(formData, "publishDirectory");
-  const host = field(formData, "host").toLowerCase();
+  let host = field(formData, "host").toLowerCase();
+  const subdomain = field(formData, "subdomain");
   const port = Number(formData.get("port"));
   const watchPaths = field(formData, "watchPaths")
     .split(/[\r\n,]+/)
@@ -149,6 +153,22 @@ export async function createApplicationAction(
     !DOKPLOY_APPLICATION_BUILD_TYPES.includes(buildType)
   ) {
     return { status: "error", message: "Complete all required fields." };
+  }
+  const infraManagement = isInfraManagementApplication({
+    owner,
+    repository,
+    buildPath,
+  });
+  if (infraManagement) {
+    const instance = await getActiveDokployConfiguration();
+    if (!instance || !isValidHostname(instance.rootDomain)) {
+      return {
+        status: "error",
+        message:
+          "Configure a valid instance root domain before deploying Infra Management.",
+      };
+    }
+    host = resolveInfraManagementHostname(subdomain, instance.rootDomain);
   }
   if (host && (!isValidHostname(host) || !isValidPort(port))) {
     return { status: "error", message: "Enter a valid hostname and port." };
@@ -219,11 +239,7 @@ export async function createApplicationAction(
           https: formData.get("https") === "on",
         }
       : undefined;
-    const applicationId = isInfraManagementApplication({
-      owner,
-      repository,
-      buildPath,
-    })
+    const applicationId = infraManagement
       ? await (async () => {
           const zotImage = await getInfraManagementZotImage();
           if (!zotImage.available) throw new Error(zotImage.message);

@@ -90,15 +90,6 @@ export function getApplicationRepositoryConfig() {
 
 const applicationFolders = ["01-infra-management"] as const;
 
-export function getRepositoryApplicationDefaultHost(
-  application: RepositoryApplication,
-  rootDomain: string,
-) {
-  return application.name.toLowerCase() === "01-infra-management"
-    ? rootDomain
-    : "";
-}
-
 export async function getRepositoryApplications(): Promise<
   RepositoryApplication[]
 > {

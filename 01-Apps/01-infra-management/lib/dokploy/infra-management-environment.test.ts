@@ -2,9 +2,21 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-import { serializeInfraManagementEnvironment } from "./infra-management-environment";
+import {
+  resolveInfraManagementHostname,
+  serializeInfraManagementEnvironment,
+} from "./infra-management-environment";
 
 describe("Infra Management deployment environment", () => {
+  it("uses the root domain by default and prefixes an optional subdomain", () => {
+    expect(resolveInfraManagementHostname("", "Example.COM")).toBe(
+      "example.com",
+    );
+    expect(resolveInfraManagementHostname(" admin ", "example.com")).toBe(
+      "admin.example.com",
+    );
+  });
+
   it("includes the source dashboard Cloudflare token with safe quoting", () => {
     expect(
       serializeInfraManagementEnvironment({
