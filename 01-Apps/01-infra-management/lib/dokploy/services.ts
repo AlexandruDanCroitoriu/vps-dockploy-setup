@@ -69,6 +69,19 @@ export async function resolveDokployLiveStatus(
         await loadContainers(`docker.getContainersByAppNameMatch?${query}`),
       );
     }
+    if (
+      service.type === "applications" &&
+      !containers.some(isContainerRunning)
+    ) {
+      containers = containersFromResponse(
+        await loadContainers(
+          `docker.getServiceContainersByAppName?${new URLSearchParams({
+            appName: service.appName,
+            ...(service.serverId ? { serverId: service.serverId } : {}),
+          })}`,
+        ),
+      );
+    }
     if (containers.some(isContainerRunning)) {
       return { ...service, status: "running" as const };
     }

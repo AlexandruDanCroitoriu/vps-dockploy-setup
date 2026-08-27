@@ -49,6 +49,8 @@ describe("container status", () => {
     [{ status: "running" }, true],
     [{ Status: "Up 2 minutes" }, true],
     [{ status: "up" }, true],
+    [{ currentState: "Running 2 minutes ago" }, true],
+    [{ state: "running", currentState: "Rejected 2 minutes ago" }, false],
     [{ State: "exited", Status: "Exited (1)" }, false],
     [{ broken: true }, false],
   ])("detects running containers", (container, expected) => {

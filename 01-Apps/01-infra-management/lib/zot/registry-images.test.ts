@@ -4,6 +4,8 @@ vi.mock("server-only", () => ({}));
 
 import {
   deleteZotRegistryImage,
+  getZotRegistryImages,
+  invalidateZotRegistryMemoryState,
   normalizeZotRegistryImages,
 } from "./registry-images";
 
@@ -78,5 +80,29 @@ describe("Zot registry image normalization", () => {
         },
       }),
     );
+  });
+
+  it("fetches image versions again after the registry cache is invalidated", async () => {
+    const fetchMock = vi.fn().mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ data: { ImageList: { Results: [] } } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const registry = {
+      host: "refresh-zot.example.com",
+      username: "operator",
+      password: "registry-password",
+    };
+
+    await getZotRegistryImages(registry, "infra-management");
+    await getZotRegistryImages(registry, "infra-management");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    invalidateZotRegistryMemoryState(registry.host);
+    await getZotRegistryImages(registry, "infra-management");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

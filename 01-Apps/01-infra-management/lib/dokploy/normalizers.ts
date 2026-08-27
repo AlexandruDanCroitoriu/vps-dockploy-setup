@@ -38,6 +38,12 @@ export function isContainerRunning(container: JsonRecord) {
   const status = stringValue(
     container.Status ?? container.status,
   ).toLowerCase();
+  const currentState = stringValue(
+    container.CurrentState ?? container.currentState,
+  ).toLowerCase();
+  if (currentState) {
+    return currentState === "running" || currentState.startsWith("running ");
+  }
   return (
     state === "running" ||
     status === "running" ||

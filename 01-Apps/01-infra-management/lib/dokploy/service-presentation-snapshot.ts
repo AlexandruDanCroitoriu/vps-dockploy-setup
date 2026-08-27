@@ -3,7 +3,11 @@ import "server-only";
 import { getActiveDokployInstanceSummary } from "./active-instance";
 import { getDokployDomains } from "./domains";
 import { getDokployRenderSnapshot } from "./render-snapshot-cache";
-import { getDokployServiceStatus } from "./services";
+import {
+  getFreshDokployServiceStatus,
+  getDokployServiceStatus,
+  shouldPollDokployServiceStatus,
+} from "./services";
 import type { DokployDomain, DokployService } from "./types";
 
 export type ServicePresentationSnapshot = {
@@ -21,32 +25,45 @@ export async function getServicePresentationSnapshot(
     .map((service) => `${service.type}:${service.id}:${service.status}`)
     .join("|");
 
+  const pollLiveStatuses = services.some((service) =>
+    shouldPollDokployServiceStatus(service),
+  );
+  const loadPresentation = async () => {
+    const [statusResults, domainResults] = await Promise.all([
+      Promise.allSettled(
+        services.map((service) =>
+          pollLiveStatuses
+            ? getFreshDokployServiceStatus(service)
+            : getDokployServiceStatus(service),
+        ),
+      ),
+      Promise.allSettled(
+        services.map((service) =>
+          service.type === "applications" || service.type === "compose"
+            ? getDokployDomains(service.type, service.id)
+            : Promise.resolve([]),
+        ),
+      ),
+    ]);
+    return {
+      services: services.map((service, index) =>
+        statusResults[index].status === "fulfilled"
+          ? statusResults[index].value
+          : service,
+      ),
+      domains: services.map((_, index) =>
+        domainResults[index].status === "fulfilled"
+          ? domainResults[index].value
+          : [],
+      ),
+    };
+  };
+
+  if (pollLiveStatuses) return loadPresentation();
+
   return getDokployRenderSnapshot(
     instance.id,
     `project-services:${projectId}:${serviceVersion}`,
-    async () => {
-      const [statusResults, domainResults] = await Promise.all([
-        Promise.allSettled(services.map(getDokployServiceStatus)),
-        Promise.allSettled(
-          services.map((service) =>
-            service.type === "applications" || service.type === "compose"
-              ? getDokployDomains(service.type, service.id)
-              : Promise.resolve([]),
-          ),
-        ),
-      ]);
-      return {
-        services: services.map((service, index) =>
-          statusResults[index].status === "fulfilled"
-            ? statusResults[index].value
-            : service,
-        ),
-        domains: services.map((_, index) =>
-          domainResults[index].status === "fulfilled"
-            ? domainResults[index].value
-            : [],
-        ),
-      };
-    },
+    loadPresentation,
   );
 }

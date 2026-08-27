@@ -65,8 +65,10 @@ export async function refreshZotRegistryAction(): Promise<BuildImageState> {
     return { status: "error", message: "Select a Dokploy instance." };
   }
 
+  const registry = await getActiveZotRegistry().catch(() => null);
   invalidateDokployMemoryState(instance.id);
   clearDokployRenderSnapshots(instance.id);
+  if (registry) invalidateZotRegistryMemoryState(registry.host);
   return { status: "success", message: "Zot registry refreshed." };
 }
 

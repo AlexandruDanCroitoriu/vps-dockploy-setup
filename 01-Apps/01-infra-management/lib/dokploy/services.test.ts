@@ -88,6 +88,31 @@ describe("live service status", () => {
     );
   });
 
+  it("checks swarm service tasks when an application container is on another node", async () => {
+    const loadContainers = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { state: "running", currentState: "Running 2 minutes ago" },
+      ]);
+
+    await expect(
+      resolveDokployLiveStatus(
+        {
+          ...service,
+          type: "applications",
+          status: "deploying",
+          appName: "infra-management",
+        },
+        loadContainers,
+      ),
+    ).resolves.toMatchObject({ status: "running" });
+    expect(loadContainers).toHaveBeenNthCalledWith(
+      2,
+      "docker.getServiceContainersByAppName?appName=infra-management",
+    );
+  });
+
   it("maps missing and malformed containers to down", async () => {
     await expect(
       resolveDokployLiveStatus({ ...service }, async () => ({
