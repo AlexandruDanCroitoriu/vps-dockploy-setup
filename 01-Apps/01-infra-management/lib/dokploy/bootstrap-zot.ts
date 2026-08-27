@@ -58,6 +58,18 @@ function findZot(projects: readonly DokployProject[]) {
   return null;
 }
 
+export async function inspectDokployBootstrapResources(
+  configuration: DokployConfiguration,
+) {
+  const projects = await loadProjects(configuration);
+  return {
+    mainProjectExists: projects.some(
+      (project) => project.name.trim().toLowerCase() === "main",
+    ),
+    zotExists: findZot(projects) !== null,
+  };
+}
+
 function createdProjectIds(payload: unknown) {
   const candidate = unwrapData(payload);
   if (!isRecord(candidate)) return { projectId: "", environmentId: "" };

@@ -26,10 +26,10 @@ administrator, one application replica, and server-side access to Dokploy.
 
 - `app/(auth)/` contains the public login experience.
 - `app/(dashboard)/` contains authenticated pages and the dashboard shell.
-- `app/(dashboard)/projects/` is a development-only view of local `01-Apps`
-  directories and may invoke the already-authenticated local Docker CLI to build
-  and push production images. Keep its route, navigation, and actions unavailable
-  outside development.
+- `app/(dashboard)/projects/` is available in development and in explicitly
+  enabled production deployments. Production uses a managed Git checkout under
+  persistent app storage and an intentionally mounted host Docker socket. Keep
+  its route, navigation, actions, and status API behind the project-build flag.
 - `app/(dashboard)/dokploy/_actions/` contains authenticated Server Actions split
   by projects, services, databases, and domains. Shared action state, authentication,
   and safe error conversion live in `shared.ts`.
@@ -72,8 +72,10 @@ administrator, one application replica, and server-side access to Dokploy.
 - This is intentionally a single-user application deployed as one Dockploy/Next.js replica. Do not add user registration, a user database, Redis, OAuth providers, roles, or multi-user behavior unless the user explicitly changes that requirement.
 - Authentication uses NextAuth.js v4 with its Credentials provider. The shared configuration and all in-memory login-rate-limit logic live in `auth.ts`.
 - `app/api/auth/[...nextauth]/route.ts` exposes the NextAuth GET and POST handlers. The custom sign-in UI is `app/(auth)/login/page.tsx`, and dashboard sign-out uses `signOut()` from `next-auth/react`.
-- Credentials come from server-only environment variables: `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`, and `AUTH_SECRET`. Never expose them through `NEXT_PUBLIC_*`, commit `.env`, log their values, or replace the bcrypt hash with a plaintext password.
-- `ADMIN_PASSWORD_HASH` is a bcrypt hash with cost 12. Literal `$` characters must be escaped as `\$` when the hash is stored in a Next.js `.env` file because Next.js expands unescaped dollar signs. See `.env.example` for the safe generation command. Environment variables configured directly in Dockploy normally use the unescaped hash.
+- Credentials come from the server-only `INFRA_SERVICES_DEFAULT_USERNAME` and
+  `INFRA_SERVICES_DEFAULT_PASSWORD` environment variables shared with provisioned
+  services. `AUTH_SECRET` remains separate. Never expose these values through
+  `NEXT_PUBLIC_*`, commit `.env`, or log their values.
 - Sessions use encrypted JWT cookies with an eight-hour maximum age. `AUTH_SECRET` must be a strong random value and must remain consistent between deployments; rotating it intentionally invalidates all existing sessions.
 - `proxy.ts` protects all application pages and future API paths, redirects unauthenticated requests to `/login`, and leaves only `/login`, `/api/auth/*`, Next.js static/image assets, and the favicon public. Keep its custom `pages.signIn` value synchronized with `auth.ts`.
 - Login attempts are limited in memory by client IP: five failures within 15 minutes cause a 15-minute lockout, and successful authentication clears the record. This is appropriate only while Dockploy runs one application replica. The limiter resets on process/container restart.

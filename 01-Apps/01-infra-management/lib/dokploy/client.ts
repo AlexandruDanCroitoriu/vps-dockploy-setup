@@ -143,6 +143,13 @@ export async function dokployGet<T = unknown>(endpoint: string): Promise<T> {
   });
 }
 
+export async function dokployGetFresh<T = unknown>(
+  endpoint: string,
+): Promise<T> {
+  const response = await dokployRequest(endpoint);
+  return response.json() as Promise<T>;
+}
+
 export async function dokployPost<T = unknown>(
   endpoint: string,
   body: unknown,

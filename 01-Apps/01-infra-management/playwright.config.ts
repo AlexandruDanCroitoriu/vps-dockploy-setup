@@ -15,9 +15,8 @@ export default defineConfig({
         reuseExistingServer: false,
         env: {
           NEXT_DIST_DIR: ".next-e2e",
-          ADMIN_USERNAME: "e2e-admin",
-          ADMIN_PASSWORD_HASH:
-            "$2b$12$OLLvKWAKujx.5yzTlG6p.eMZQGpGfaG4I36UxYr3RzluS.HTzEoB.",
+          INFRA_SERVICES_DEFAULT_USERNAME: "e2e-admin",
+          INFRA_SERVICES_DEFAULT_PASSWORD: "e2e-password",
           AUTH_SECRET: "e2e-only-secret-not-for-production-use",
           NEXTAUTH_URL: localE2EUrl,
           DOKPLOY_URL: "http://127.0.0.1:3999",

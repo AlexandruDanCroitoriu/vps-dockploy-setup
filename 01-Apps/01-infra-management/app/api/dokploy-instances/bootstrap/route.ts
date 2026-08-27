@@ -1,10 +1,13 @@
 import { getServerSession } from "next-auth";
+import { revalidatePath } from "next/cache";
 import { authOptions } from "@/auth";
 import {
   deployDokployZotRegistry,
   ensureDokployMainProject,
+  inspectDokployBootstrapResources,
 } from "@/lib/dokploy/bootstrap-zot";
 import { updateDokployInstance } from "@/lib/storage/dokploy-instances";
+import { refreshSidebarProjectSnapshot } from "@/lib/dokploy/sidebar-project-snapshot";
 import { runDokployBootstrapStep } from "@/lib/vps/bootstrap-dokploy";
 import {
   DOKPLOY_BOOTSTRAP_STEPS,
@@ -25,6 +28,31 @@ type BootstrapRequest = {
   jobId?: unknown;
   step?: unknown;
 };
+
+async function refreshBootstrapSidebar(
+  instanceId: string,
+  step: "main-project" | "zot",
+) {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const snapshot = await refreshSidebarProjectSnapshot(instanceId);
+    const visible =
+      step === "main-project"
+        ? snapshot.projects.some(
+            (project) => project.name.trim().toLowerCase() === "main",
+          )
+        : snapshot.projects.some((project) =>
+            project.environments.some((environment) =>
+              environment.services.some(
+                (service) => service.name.trim().toLowerCase() === "zot",
+              ),
+            ),
+          );
+    if (visible) return;
+    if (attempt < 5) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+}
 
 async function executeSavedStep(jobId: string, requestedStep: string) {
   const step = requestedStep as DokployBootstrapStep;
@@ -124,6 +152,45 @@ async function executeSavedStep(jobId: string, requestedStep: string) {
           updateDokployProvisioningJob(job.id, { apiKey });
         },
       );
+      if (step === "api-key") {
+        const refreshedJob = getDokployProvisioningJob(job.id)!;
+        try {
+          const existing = await inspectDokployBootstrapResources({
+            baseUrl: setupConfiguration.baseUrl,
+            apiKey: refreshedJob.apiKey,
+          });
+          if (existing.mainProjectExists) {
+            updateDokployProvisioningJob(job.id, {
+              step: "main-project",
+              stepStatus: "done",
+              log: {
+                step: "main-project",
+                message:
+                  "Existing Main project detected; step completed automatically.",
+              },
+            });
+          }
+          if (existing.zotExists) {
+            updateDokployProvisioningJob(job.id, {
+              step: "zot",
+              stepStatus: "done",
+              log: {
+                step: "zot",
+                message:
+                  "Existing Zot service detected; step completed automatically.",
+              },
+            });
+          }
+        } catch {
+          updateDokployProvisioningJob(job.id, {
+            log: {
+              step: "api-key",
+              message:
+                "Existing Main project and Zot service could not be detected; continue with the remaining idempotent steps.",
+            },
+          });
+        }
+      }
     }
     const updatedJob = getDokployProvisioningJob(job.id)!;
     if (updatedJob.instanceId) {
@@ -137,6 +204,12 @@ async function executeSavedStep(jobId: string, requestedStep: string) {
         defaultServiceUsername: updatedJob.defaultServiceUsername,
         defaultServicePassword: updatedJob.defaultServicePassword,
       });
+      if (step === "main-project" || step === "zot") {
+        await refreshBootstrapSidebar(updatedJob.instanceId, step).catch(
+          () => {},
+        );
+        revalidatePath("/", "layout");
+      }
     }
     return Response.json(completeDokployProvisioningStep(job.id, step));
   } catch (error) {

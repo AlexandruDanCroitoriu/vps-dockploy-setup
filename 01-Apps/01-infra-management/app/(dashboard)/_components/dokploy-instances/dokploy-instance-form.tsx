@@ -2,9 +2,12 @@
 
 import {
   CheckIcon,
+  CheckCircleIcon,
   ClipboardDocumentIcon,
+  CommandLineIcon,
   EyeIcon,
   EyeSlashIcon,
+  GlobeAltIcon,
 } from "@heroicons/react/24/outline";
 import { useRouter } from "next/navigation";
 import {
@@ -19,7 +22,7 @@ import { ActionMessage, FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import {
   createDokployInstanceAction,
-  resolveDokployVpsIpAction,
+  verifyRootDomainIpAction,
   updateDokployInstanceAction,
 } from "../../_actions/dokploy-instances";
 import type { ActionState } from "../../dokploy/_actions/shared";
@@ -29,6 +32,7 @@ import {
   type DokployBootstrapStepStatus,
 } from "@/lib/vps/bootstrap-progress";
 import type { DokployProvisioningJob } from "@/lib/storage/dokploy-provisioning";
+import { Select } from "@/components/ui/select";
 
 const initialState: ActionState = { status: "idle", message: "" };
 const stepLabels: Record<DokployBootstrapStep, string> = {
@@ -45,6 +49,8 @@ export function DokployInstanceForm({
   instance,
   provisioningJob = null,
   newInstanceDefaults = { username: "admin", password: "admin" },
+  cloudflareDomains = [],
+  cloudflareError = "",
 }: {
   instance: {
     id: string;
@@ -58,6 +64,8 @@ export function DokployInstanceForm({
   } | null;
   provisioningJob?: DokployProvisioningJob | null;
   newInstanceDefaults?: { username: string; password: string };
+  cloudflareDomains?: { name: string; ipAddress: string }[];
+  cloudflareError?: string;
 }) {
   const isEditing = Boolean(instance);
   const [instanceName, setInstanceName] = useState(
@@ -72,21 +80,22 @@ export function DokployInstanceForm({
   const [apiKey, setApiKey] = useState(
     instance?.apiKey ?? provisioningJob?.apiKey ?? "",
   );
-  const [defaultServiceUsername, setDefaultServiceUsername] = useState(
+  const defaultServiceUsername =
     instance?.defaultServiceUsername ??
-      provisioningJob?.defaultServiceUsername ??
-      newInstanceDefaults.username,
-  );
-  const [defaultServicePassword, setDefaultServicePassword] = useState(
+    provisioningJob?.defaultServiceUsername ??
+    newInstanceDefaults.username;
+  const defaultServicePassword =
     instance?.defaultServicePassword ??
-      provisioningJob?.defaultServicePassword ??
-      newInstanceDefaults.password,
-  );
+    provisioningJob?.defaultServicePassword ??
+    newInstanceDefaults.password;
   const [vpsIpError, setVpsIpError] = useState("");
+  const [vpsIpVerified, setVpsIpVerified] = useState(false);
   const [vpsIpPending, startVpsIpResolution] = useTransition();
   const vpsIpRequestRef = useRef(0);
   const [showApiKey, setShowApiKey] = useState(false);
   const [apiKeyCopied, setApiKeyCopied] = useState(false);
+  const [showDefaultPassword, setShowDefaultPassword] = useState(false);
+  const [defaultPasswordCopied, setDefaultPasswordCopied] = useState(false);
   const [copiedLogs, setCopiedLogs] = useState<
     DokployBootstrapStep | "all" | null
   >(null);
@@ -105,7 +114,9 @@ export function DokployInstanceForm({
   const provisioningJobId = provisioningJob?.id ?? "";
   const [automaticSetup, setAutomaticSetup] = useState(false);
   const setupComplete = provisioningJob?.status === "complete";
+  const hasChanges = isEditing && instanceName.trim() !== instance!.name;
   const apiKeyRef = useRef<HTMLInputElement>(null);
+  const defaultPasswordRef = useRef<HTMLInputElement>(null);
   const dockployUrl = rootDomain.trim()
     ? `https://dockploy.${rootDomain.trim().toLowerCase().replace(/\.$/, "")}`
     : "";
@@ -181,24 +192,26 @@ export function DokployInstanceForm({
 
   useEffect(() => {
     const requestId = ++vpsIpRequestRef.current;
+    if (isEditing) return;
     const domain = rootDomain.trim();
     if (!domain) return;
     const requestDomain = domain;
     const timeout = window.setTimeout(() => {
       startVpsIpResolution(async () => {
-        const result = await resolveDokployVpsIpAction(requestDomain);
+        const result = await verifyRootDomainIpAction(requestDomain, vpsIp);
         if (vpsIpRequestRef.current !== requestId) return;
         if (result.status === "success") {
           setVpsIp(result.ipAddress);
           setVpsIpError("");
+          setVpsIpVerified(true);
         } else {
-          setVpsIp("");
           setVpsIpError(result.message);
+          setVpsIpVerified(false);
         }
       });
     }, 500);
     return () => window.clearTimeout(timeout);
-  }, [rootDomain]);
+  }, [isEditing, rootDomain, vpsIp]);
 
   async function runSavedStep(step: DokployBootstrapStep) {
     if (!provisioningJobId || bootstrapPending) return;
@@ -285,64 +298,215 @@ export function DokployInstanceForm({
             onChange={(event) => setInstanceName(event.target.value)}
           />
         </FormField>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-4">
-            <FormField label="Root domain" htmlFor="dockploy-root-domain">
-              <Input
+        <div className="space-y-4">
+          <FormField label="Root domain" htmlFor="dockploy-root-domain">
+            <div className="flex items-center gap-2">
+              <div className="mt-1.5 flex shrink-0 items-center gap-1">
+                <a
+                  href={vpsIp ? `http://${vpsIp}:3000` : undefined}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="Open Dockploy using IP address"
+                  title="Open Dockploy using IP address"
+                  aria-disabled={!vpsIp}
+                  className={`rounded-md border p-2 ${vpsIp ? "border-gray-300 text-gray-600 hover:bg-gray-50 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/5" : "pointer-events-none border-gray-200 text-gray-300 dark:border-white/5 dark:text-gray-600"}`}
+                >
+                  <CommandLineIcon className="size-5" aria-hidden="true" />
+                </a>
+                <a
+                  href={dockployUrl || undefined}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="Open Dockploy using domain"
+                  title="Open Dockploy using domain"
+                  aria-disabled={!dockployUrl}
+                  className={`rounded-md border p-2 ${dockployUrl ? "border-gray-300 text-gray-600 hover:bg-gray-50 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/5" : "pointer-events-none border-gray-200 text-gray-300 dark:border-white/5 dark:text-gray-600"}`}
+                >
+                  <GlobeAltIcon className="size-5" aria-hidden="true" />
+                </a>
+              </div>
+              <Select
+                className="min-w-0 flex-1"
                 id="dockploy-root-domain"
-                name="rootDomain"
+                name={isEditing ? undefined : "rootDomain"}
                 required
-                maxLength={253}
-                autoComplete="off"
-                placeholder="example.com"
+                disabled={isEditing}
                 value={rootDomain}
                 onChange={(event) => {
                   const value = event.target.value;
                   setRootDomain(value);
-                  if (!value.trim()) {
-                    setVpsIp("");
-                    setVpsIpError("");
-                  }
+                  setVpsIp(
+                    cloudflareDomains.find((domain) => domain.name === value)
+                      ?.ipAddress ?? "",
+                  );
+                  setVpsIpError("");
+                  setVpsIpVerified(false);
                 }}
-              />
-            </FormField>
-            <FormField label="VPS IP address" htmlFor="dockploy-vps-ip">
-              <Input
-                id="dockploy-vps-ip"
-                name="ipAddress"
-                autoComplete="off"
-                placeholder={vpsIpPending ? "Resolving…" : "203.0.113.10"}
-                value={vpsIp}
-                readOnly
-                tabIndex={-1}
-                className="cursor-default bg-gray-50 text-gray-600 dark:bg-gray-900/50 dark:text-gray-400"
-              />
-              {vpsIpError && (
-                <p className="mt-1 text-xs text-red-600 dark:text-red-400">
-                  {vpsIpError}
-                </p>
+              >
+                <option value="">Select a Cloudflare domain</option>
+                {rootDomain &&
+                  !cloudflareDomains.some(
+                    ({ name }) => name === rootDomain,
+                  ) && (
+                    <option value={rootDomain}>{rootDomain} (current)</option>
+                  )}
+                {cloudflareDomains.map(({ name, ipAddress }) => (
+                  <option key={name} value={name} disabled={!ipAddress}>
+                    {name}
+                    {ipAddress ? ` — ${ipAddress}` : " — no apex A record"}
+                  </option>
+                ))}
+              </Select>
+              {isEditing && (
+                <input type="hidden" name="rootDomain" value={rootDomain} />
               )}
-            </FormField>
-          </div>
-          <FormField label="Dockploy URL" htmlFor="dockploy-root-url">
+            </div>
+            {isEditing && (
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                The domain cannot be changed after the instance is created.
+              </p>
+            )}
+            {!isEditing && cloudflareError && (
+              <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                {cloudflareError}
+              </p>
+            )}
+          </FormField>
+          <FormField label="Cloudflare IP address" htmlFor="dockploy-vps-ip">
             <Input
-              id="dockploy-root-url"
-              name="rootUrl"
-              type="url"
-              value={dockployUrl}
+              id="dockploy-vps-ip"
+              autoComplete="off"
+              placeholder={vpsIpPending ? "Resolving…" : "203.0.113.10"}
+              value={vpsIp}
               readOnly
+              disabled={isEditing}
+              name={isEditing ? undefined : "ipAddress"}
               tabIndex={-1}
-              aria-describedby="dockploy-root-url-help"
               className="cursor-default bg-gray-50 text-gray-600 dark:bg-gray-900/50 dark:text-gray-400"
             />
-            <p
-              id="dockploy-root-url-help"
-              className="mt-1 text-xs text-gray-500 dark:text-gray-400"
-            >
-              Generated automatically from the root domain.
-            </p>
+            {isEditing && (
+              <input type="hidden" name="ipAddress" value={vpsIp} />
+            )}
+            {vpsIpError && (
+              <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                {vpsIpError}
+              </p>
+            )}
+            {vpsIpVerified && !vpsIpError && (
+              <p className="mt-1 flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
+                <CheckCircleIcon className="size-4" aria-hidden="true" />
+                Root domain resolves to this IP.
+              </p>
+            )}
           </FormField>
         </div>
+        <fieldset className="rounded-md border border-gray-200 p-4 dark:border-white/10">
+          <legend className="px-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
+            Default service credentials
+          </legend>
+          <p className="mb-3 text-xs text-gray-500 dark:text-gray-400">
+            Used for services such as DBGate. During a new VPS setup these also
+            become the initial Dokploy administrator credentials; use an email
+            address as the username.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField label="Default email" htmlFor="default-service-username">
+              <Input
+                id="default-service-username"
+                name="defaultServiceUsername"
+                type="email"
+                required
+                maxLength={255}
+                autoComplete="email"
+                inputMode="email"
+                autoCapitalize="none"
+                spellCheck={false}
+                value={defaultServiceUsername}
+                readOnly
+                className="cursor-default bg-gray-50 dark:bg-gray-900/50"
+              />
+            </FormField>
+            <FormField
+              label="Default password"
+              htmlFor="default-service-password"
+            >
+              <div className="relative">
+                <Input
+                  ref={defaultPasswordRef}
+                  id="default-service-password"
+                  name="defaultServicePassword"
+                  type="text"
+                  required
+                  maxLength={255}
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  value={defaultServicePassword}
+                  readOnly
+                  className={`cursor-default bg-gray-50 pr-20 dark:bg-gray-900/50 ${showDefaultPassword ? "" : "[-webkit-text-security:disc]"}`}
+                />
+                <div className="absolute top-1/2 right-2 flex -translate-y-1/2 items-center gap-0.5">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const value =
+                        defaultPasswordRef.current?.value ??
+                        defaultServicePassword;
+                      if (!value) return;
+                      try {
+                        await navigator.clipboard.writeText(value);
+                        setDefaultPasswordCopied(true);
+                        window.setTimeout(
+                          () => setDefaultPasswordCopied(false),
+                          1500,
+                        );
+                      } catch {
+                        setDefaultPasswordCopied(false);
+                      }
+                    }}
+                    aria-label={
+                      defaultPasswordCopied
+                        ? "Default password copied"
+                        : "Copy default password"
+                    }
+                    className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-gray-200"
+                  >
+                    {defaultPasswordCopied ? (
+                      <CheckIcon
+                        className="size-5 text-emerald-600"
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <ClipboardDocumentIcon
+                        className="size-5"
+                        aria-hidden="true"
+                      />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setShowDefaultPassword((visible) => !visible)
+                    }
+                    aria-label={
+                      showDefaultPassword
+                        ? "Hide default password"
+                        : "Show default password"
+                    }
+                    aria-pressed={showDefaultPassword}
+                    className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-gray-200"
+                  >
+                    {showDefaultPassword ? (
+                      <EyeSlashIcon className="size-5" aria-hidden="true" />
+                    ) : (
+                      <EyeIcon className="size-5" aria-hidden="true" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            </FormField>
+          </div>
+        </fieldset>
         <FormField label="API/CLI key" htmlFor="dockploy-api-key">
           <div className="relative">
             <Input
@@ -356,9 +520,8 @@ export function DokployInstanceForm({
               autoCapitalize="none"
               spellCheck={false}
               value={apiKey}
-              onChange={(event) => setApiKey(event.target.value)}
-              readOnly={!isEditing}
-              className={`pr-20 ${showApiKey ? "" : "[-webkit-text-security:disc]"} ${!isEditing ? "cursor-default bg-gray-50 dark:bg-gray-900/50" : ""}`}
+              readOnly
+              className={`cursor-default bg-gray-50 pr-20 dark:bg-gray-900/50 ${showApiKey ? "" : "[-webkit-text-security:disc]"}`}
             />
             <div className="absolute top-1/2 right-2 flex -translate-y-1/2 items-center gap-0.5">
               <button
@@ -410,59 +573,10 @@ export function DokployInstanceForm({
           </div>
           {!isEditing && (
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Generated automatically during VPS setup. It can be changed when
-              editing the saved instance.
+              Generated automatically during VPS setup.
             </p>
           )}
         </FormField>
-        <fieldset className="rounded-md border border-gray-200 p-4 dark:border-white/10">
-          <legend className="px-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
-            Default service credentials
-          </legend>
-          <p className="mb-3 text-xs text-gray-500 dark:text-gray-400">
-            Used for services such as DBGate. During a new VPS setup these also
-            become the initial Dokploy administrator credentials; use an email
-            address as the username.
-          </p>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <FormField label="Default email" htmlFor="default-service-username">
-              <Input
-                id="default-service-username"
-                name="defaultServiceUsername"
-                type="email"
-                required
-                maxLength={255}
-                autoComplete="email"
-                inputMode="email"
-                autoCapitalize="none"
-                spellCheck={false}
-                value={defaultServiceUsername}
-                onChange={(event) =>
-                  setDefaultServiceUsername(event.target.value)
-                }
-              />
-            </FormField>
-            <FormField
-              label="Default password"
-              htmlFor="default-service-password"
-            >
-              <Input
-                id="default-service-password"
-                name="defaultServicePassword"
-                type="text"
-                required
-                maxLength={255}
-                autoComplete="off"
-                autoCapitalize="none"
-                spellCheck={false}
-                value={defaultServicePassword}
-                onChange={(event) =>
-                  setDefaultServicePassword(event.target.value)
-                }
-              />
-            </FormField>
-          </div>
-        </fieldset>
         <div className="flex justify-end">
           <Button
             type="submit"
@@ -470,14 +584,15 @@ export function DokployInstanceForm({
             disabled={
               pending ||
               bootstrapPending ||
+              (isEditing && !hasChanges) ||
               Boolean(provisioningJob && !setupComplete)
             }
           >
             {pending
               ? "Saving…"
               : instance
-                ? "Verify and save changes"
-                : "Save new instance"}
+                ? "Save changes"
+                : "Add new instance"}
           </Button>
         </div>
       </form>
@@ -514,7 +629,7 @@ export function DokployInstanceForm({
                 className={`relative h-6 w-11 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${automaticSetup ? "bg-indigo-600" : "bg-gray-300 dark:bg-gray-600"}`}
               >
                 <span
-                  className={`absolute top-0.5 size-5 rounded-full bg-white shadow-sm transition-transform ${automaticSetup ? "translate-x-5" : "translate-x-0.5"}`}
+                  className={`absolute top-0.5 left-0.5 size-5 rounded-full bg-white shadow-sm transition-transform ${automaticSetup ? "translate-x-5" : "translate-x-0"}`}
                 />
               </button>
             </label>

@@ -5,11 +5,8 @@ import { useState } from "react";
 
 import { useClickOutside } from "@/components/ui/use-click-outside";
 import type { RepositoryApplication } from "@/lib/github/repository-applications";
-
-function normalizePath(value: string) {
-  const path = value.trim();
-  return path ? `/${path.replace(/^\/+|\/+$/g, "")}` : "/";
-}
+import { isRepositoryApplicationDeployed } from "@/lib/github/repository-applications";
+import type { RepositoryApplicationDeployment } from "@/lib/github/repository-applications";
 
 export function RepositoryApplicationDropdown({
   disabled,
@@ -22,7 +19,7 @@ export function RepositoryApplicationDropdown({
   disabled: boolean;
   applications: RepositoryApplication[];
   applicationsError: string;
-  deployedApplications: Array<{ name: string; sourcePath: string | null }>;
+  deployedApplications: RepositoryApplicationDeployment[];
   infraManagementImageAvailability: {
     available: boolean;
     message: string;
@@ -31,14 +28,6 @@ export function RepositoryApplicationDropdown({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useClickOutside<HTMLDivElement>(open, setOpen);
-  const deployedPaths = new Set(
-    deployedApplications.flatMap(({ sourcePath }) =>
-      sourcePath ? [normalizePath(sourcePath).toLowerCase()] : [],
-    ),
-  );
-  const deployedNames = new Set(
-    deployedApplications.map(({ name }) => name.toLowerCase()),
-  );
 
   function select(application: RepositoryApplication) {
     setOpen(false);
@@ -83,10 +72,10 @@ export function RepositoryApplicationDropdown({
           ) : (
             <ul className="max-h-72 overflow-y-auto py-1">
               {applications.map((application) => {
-                const deployed =
-                  deployedPaths.has(
-                    normalizePath(application.path).toLowerCase(),
-                  ) || deployedNames.has(application.name.toLowerCase());
+                const deployed = isRepositoryApplicationDeployed(
+                  application,
+                  deployedApplications,
+                );
                 const isInfraManagement =
                   application.name.toLowerCase() === "01-infra-management";
                 const registryUnavailable =
@@ -102,7 +91,7 @@ export function RepositoryApplicationDropdown({
                       disabled={unavailable}
                       title={
                         deployed
-                          ? "Already deployed in this project"
+                          ? "Already deployed on this Dockploy instance"
                           : registryUnavailable
                             ? infraManagementImageAvailability.message
                             : undefined
@@ -114,8 +103,8 @@ export function RepositoryApplicationDropdown({
                         aria-hidden="true"
                       />
                       <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium text-gray-800 dark:text-gray-200">
-                          {application.name}
+                        <span className="flex items-center gap-1.5 text-sm font-medium text-gray-800 dark:text-gray-200">
+                          <span className="truncate">{application.name}</span>
                         </span>
                         <span
                           className={`block text-xs ${
@@ -125,7 +114,7 @@ export function RepositoryApplicationDropdown({
                           }`}
                         >
                           {deployed
-                            ? "Already deployed"
+                            ? "Already deployed on this instance"
                             : registryUnavailable
                               ? infraManagementImageAvailability.message
                               : `/${application.path}`}

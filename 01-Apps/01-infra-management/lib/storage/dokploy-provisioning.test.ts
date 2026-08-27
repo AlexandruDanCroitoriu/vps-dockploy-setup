@@ -3,11 +3,13 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { closeDatabaseForTests } from "./database";
+import { DOKPLOY_BOOTSTRAP_STEPS } from "@/lib/vps/bootstrap-progress";
 import {
   beginDokployProvisioningStep,
   completeDokployProvisioningStep,
   failDokployProvisioningStep,
   getDokployProvisioningJob,
+  reconcileDokployResourceSteps,
   startDokployProvisioningJob,
   updateDokployProvisioningJob,
 } from "./dokploy-provisioning";
@@ -75,6 +77,30 @@ describe("Dokploy provisioning persistence", () => {
 
     expect(getDokployProvisioningJob(job.id)?.steps["api-key"]).toBe("done");
     expect(getDokployProvisioningJob(job.id)?.apiKey).toBe("generated-key");
+  });
+
+  it("reopens completed resource steps when Main or Zot is missing", () => {
+    const job = startDokployProvisioningJob(input);
+    for (const step of DOKPLOY_BOOTSTRAP_STEPS) {
+      updateDokployProvisioningJob(job.id, { step, stepStatus: "done" });
+    }
+    updateDokployProvisioningJob(job.id, { status: "complete" });
+
+    expect(
+      reconcileDokployResourceSteps(job.id, {
+        mainProjectExists: false,
+        zotExists: false,
+      }),
+    ).toMatchObject({
+      status: "waiting",
+      steps: {
+        "api-key": "done",
+      },
+    });
+    expect(getDokployProvisioningJob(job.id)?.steps["main-project"]).toBe(
+      undefined,
+    );
+    expect(getDokployProvisioningJob(job.id)?.steps.zot).toBe(undefined);
   });
 
   it("starts interrupted setups again with no steps, logs, errors, or API key", () => {

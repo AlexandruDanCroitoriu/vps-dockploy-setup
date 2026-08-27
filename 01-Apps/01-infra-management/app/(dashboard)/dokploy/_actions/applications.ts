@@ -1,6 +1,5 @@
 "use server";
 
-import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { randomBytes } from "node:crypto";
 import {
@@ -9,10 +8,18 @@ import {
   DOKPLOY_APPLICATION_BUILD_TYPES,
   generateDokployDomain,
   getActiveDokployConfiguration,
+  getFreshDokployProjects,
   isValidHostname,
   isValidPort,
   type DokployApplicationBuildType,
 } from "@/lib/dokploy";
+import { serializeInfraManagementEnvironment } from "@/lib/dokploy/infra-management-environment";
+import {
+  getRepositoryApplications,
+  getRepositoryApplicationDeployments,
+  isRepositoryApplicationDeployed,
+  matchesRepositoryApplicationInput,
+} from "@/lib/github/repository-applications";
 import { getInfraManagementZotImage } from "@/lib/zot/infra-management-image";
 import {
   deployAfterCreateRequested,
@@ -44,10 +51,6 @@ function field(formData: FormData, name: string) {
   return formData.get(name)?.toString().trim() ?? "";
 }
 
-function environmentLine(name: string, value: string) {
-  return `${name}=${JSON.stringify(value)}`;
-}
-
 async function getInfraManagementEnvironment(input: {
   owner: string;
   repository: string;
@@ -68,17 +71,15 @@ async function getInfraManagementEnvironment(input: {
     );
   }
 
-  const [passwordHash, authSecret] = await Promise.all([
-    bcrypt.hash(instance.defaultServicePassword, 12),
-    Promise.resolve(randomBytes(32).toString("base64url")),
-  ]);
+  const authSecret = randomBytes(32).toString("base64url");
 
-  return [
-    environmentLine("ADMIN_USERNAME", instance.defaultServiceUsername),
-    environmentLine("ADMIN_PASSWORD_HASH", passwordHash),
-    environmentLine("AUTH_SECRET", authSecret),
-    environmentLine("NEXTAUTH_URL", `https://${hostname}`),
-  ].join("\n");
+  return serializeInfraManagementEnvironment({
+    username: instance.defaultServiceUsername,
+    password: instance.defaultServicePassword,
+    authSecret,
+    nextAuthUrl: `https://${hostname}`,
+    cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN ?? "",
+  });
 }
 
 export async function generateApplicationDomainAction(applicationName: string) {
@@ -179,6 +180,32 @@ export async function createApplicationAction(
   }
 
   try {
+    const repositoryApplication = (await getRepositoryApplications()).find(
+      (application) =>
+        matchesRepositoryApplicationInput(application, {
+          owner,
+          repository,
+          buildPath,
+        }),
+    );
+    if (repositoryApplication) {
+      const projects = await getFreshDokployProjects();
+      const deployedApplications =
+        getRepositoryApplicationDeployments(projects);
+      if (
+        isRepositoryApplicationDeployed(
+          repositoryApplication,
+          deployedApplications,
+        )
+      ) {
+        return {
+          status: "error",
+          message:
+            "This repository application is already deployed on the active Dockploy instance.",
+        };
+      }
+    }
+
     const environmentVariables = await getInfraManagementEnvironment({
       owner,
       repository,
@@ -209,6 +236,18 @@ export async function createApplicationAction(
             registryUsername: zotImage.registry.username,
             registryPassword: zotImage.registry.password,
             environmentVariables,
+            mounts: [
+              {
+                type: "volume",
+                volumeName: "infra-management-data",
+                mountPath: "/app/data",
+              },
+              {
+                type: "bind",
+                hostPath: "/var/run/docker.sock",
+                mountPath: "/var/run/docker.sock",
+              },
+            ],
             domain,
           });
         })()

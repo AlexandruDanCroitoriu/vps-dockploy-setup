@@ -18,6 +18,7 @@ import type {
 import {
   getRepositoryApplicationDefaultHost,
   type RepositoryApplication,
+  type RepositoryApplicationDeployment,
 } from "@/lib/github/repository-applications";
 import {
   notifyProjectsChanged,
@@ -68,7 +69,7 @@ export function AddApplicationDialog({
   repositoryApplications: RepositoryApplication[];
   repositoryApplicationsError: string;
   rootDomain: string;
-  deployedApplications: Array<{ name: string; sourcePath: string | null }>;
+  deployedApplications: RepositoryApplicationDeployment[];
   infraManagementImageAvailability: {
     available: boolean;
     message: string;

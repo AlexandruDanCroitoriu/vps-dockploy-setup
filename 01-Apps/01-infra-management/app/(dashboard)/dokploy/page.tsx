@@ -5,7 +5,10 @@ import {
   getDokployGithubProviders,
 } from "@/lib/dokploy";
 import { getActiveDokployProjectSnapshot } from "@/lib/dokploy/sidebar-project-snapshot";
-import { getRepositoryApplicationsResult } from "@/lib/github/repository-applications";
+import {
+  getRepositoryApplicationDeployments,
+  getRepositoryApplicationsResult,
+} from "@/lib/github/repository-applications";
 import { getUnavailableComposeServiceDefinitionIds } from "@/compose-services/registry";
 import { getInfraManagementZotImage } from "@/lib/zot/infra-management-image";
 
@@ -71,6 +74,8 @@ async function ProjectsContent() {
   ]);
   const unavailableComposeDefinitionIds =
     getUnavailableComposeServiceDefinitionIds(projects);
+  const deployedRepositoryApplications =
+    getRepositoryApplicationDeployments(projects);
 
   return (
     <>
@@ -79,9 +84,9 @@ async function ProjectsContent() {
           No projects were returned by Dokploy.
         </div>
       ) : (
-        <div className="mt-4 columns-1 gap-4 lg:columns-2">
+        <div className="mt-4 grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
           {projects.map((project) => (
-            <div key={project.projectId} className="mb-4 break-inside-avoid">
+            <div key={project.projectId}>
               <ProjectCard
                 project={project}
                 linkServices
@@ -98,9 +103,11 @@ async function ProjectsContent() {
                   username: activeInstance?.defaultServiceUsername ?? "admin",
                   password: activeInstance?.defaultServicePassword ?? "admin",
                 }}
+                dokployRootUrl={activeInstance?.rootUrl ?? ""}
                 unavailableComposeDefinitionIds={
                   unavailableComposeDefinitionIds
                 }
+                deployedRepositoryApplications={deployedRepositoryApplications}
               />
             </div>
           ))}

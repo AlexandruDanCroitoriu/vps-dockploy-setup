@@ -30,6 +30,7 @@ export function getServiceDisplayName(service: DokployService) {
 export function ServiceCard({
   service,
   href,
+  dokployHref,
   showCredentialsButton = true,
   showEnvironmentEditor = true,
   projectId,
@@ -39,6 +40,7 @@ export function ServiceCard({
 }: {
   service: DokployService;
   href?: string;
+  dokployHref?: string;
   showCredentialsButton?: boolean;
   showEnvironmentEditor?: boolean;
   projectId?: string;
@@ -51,7 +53,20 @@ export function ServiceCard({
 
   return (
     <li className="flex min-w-0 items-center gap-2.5 rounded-md border border-gray-200 bg-white px-3 py-2.5 dark:border-white/10 dark:bg-gray-900/50">
-      <CubeIcon className="size-4 shrink-0 text-indigo-500" />
+      {dokployHref ? (
+        <a
+          href={dokployHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={`Open ${getServiceDisplayName(service)} in Dokploy`}
+          aria-label={`Open ${getServiceDisplayName(service)} in Dokploy`}
+          className="shrink-0 rounded p-1 text-indigo-500 hover:bg-indigo-50 hover:text-indigo-700 dark:hover:bg-indigo-500/10 dark:hover:text-indigo-300"
+        >
+          <CubeIcon className="size-4" aria-hidden="true" />
+        </a>
+      ) : (
+        <CubeIcon className="size-4 shrink-0 text-indigo-500" />
+      )}
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-2">
           <span

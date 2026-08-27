@@ -1,7 +1,7 @@
 import "server-only";
 
 import { getActiveDokployInstanceSummary } from "./active-instance";
-import { getDokployProjects } from "./projects";
+import { getDokployProjects, getFreshDokployProjects } from "./projects";
 import type { DokployProject } from "./types";
 import { getDokployMemoryRevision } from "./instance-memory-state";
 
@@ -128,4 +128,11 @@ export async function getActiveDokployProjectFromSnapshot(
 
 export function clearSidebarProjectSnapshot(instanceId: string) {
   snapshots.delete(instanceId);
+}
+
+export async function refreshSidebarProjectSnapshot(instanceId: string) {
+  clearSidebarProjectSnapshot(instanceId);
+  return getSidebarProjectSnapshot(instanceId, getFreshDokployProjects, {
+    forceRefresh: true,
+  });
 }

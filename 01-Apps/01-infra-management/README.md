@@ -14,18 +14,24 @@ The Add application dropdown discovers directories under `01-Apps`; selecting on
 The provisioning state sequence, operational URL rules, persistence boundaries,
 and code ownership are documented in [docs/instance-lifecycle.md](docs/instance-lifecycle.md).
 
+The authenticated Home page can export all Dockploy instance and provisioning
+state as JSON or transactionally replace it from a compatible export. These
+files contain plaintext API keys and credentials and must be handled like the
+SQLite database itself.
+
 ## Required environment variables
 
 Copy `.env.example` to `.env.local` for local development and configure:
 
-- `ADMIN_USERNAME`: administrator login name
-- `infra_services_default_username`: default service and initial Dockploy
-  administrator email used for new instances
-- `infra_services_default_password`: default service, initial Dockploy
-  administrator, and root SSH password used for new instances
-- `ADMIN_PASSWORD_HASH`: bcrypt password hash with cost 12
+- `INFRA_SERVICES_DEFAULT_USERNAME`: Infra Management login name and default
+  service/initial Dockploy administrator email used for new instances
+- `INFRA_SERVICES_DEFAULT_PASSWORD`: Infra Management login password and default
+  service, initial Dockploy administrator, and root SSH password for new instances
 - `AUTH_SECRET`: stable random secret used to encrypt session JWTs
 - `NEXTAUTH_URL`: public application URL
+- `CLOUDFLARE_API_TOKEN`: server-only Cloudflare API token with `Zone:Read` and
+  `DNS:Write` permissions, used to manage accessible domains and subdomains on
+  the Cloudflare page
 
 Dockploy root domains, API/CLI keys, and default service login credentials are
 configured from the authenticated Dashboard. The selected instance's values
@@ -44,13 +50,10 @@ once. The imported instance must then be selected from the sidebar.
 The application dropdown uses the repository application manifest in
 `lib/github/repository-applications.ts`. This avoids runtime GitHub API access
 and does not require a `GITHUB_TOKEN`. Add new `01-Apps` folders to that manifest
-when they should appear in the dropdown.
-
-Generate an escaped password hash for a Next.js environment file:
-
-```bash
-node -e 'console.log(require("bcryptjs").hashSync("replace-with-a-strong-password", 12).replaceAll("$", "\\$"))'
-```
+when they should appear in the dropdown. Each manifest application can be
+deployed only once per Dockploy instance, regardless of which project contains
+it. Applications backed by a Zot image remain unavailable until their required
+`latest` image can be verified in the active instance's registry.
 
 Generate the authentication secret with `openssl rand -base64 32`. Keep `AUTH_SECRET` unchanged between deployments; rotating it signs out the current session.
 
@@ -67,11 +70,14 @@ npm run build
 
 Unit and component tests use Vitest and React Testing Library. Playwright starts a local test server for the login tests. Install its browser and Linux dependencies once with `npx playwright install --with-deps chromium`; connected Dokploy workflow tests run when `E2E_DOKPLOY=1`, `E2E_BASE_URL`, `E2E_USERNAME`, and `E2E_PASSWORD` are configured.
 
-### Local Docker image builds
+### Project Docker image builds
 
-In local development, the authenticated `Projects` page lists directories under
-the repository's `01-Apps` folder. Projects with a `Dockerfile` can be built as
-production images and pushed to the Zot registry on the active Dokploy instance.
+The authenticated `Projects` page lists directories under the repository's
+`01-Apps` folder. Projects with a `Dockerfile` can be built as production images
+and pushed to the Zot registry on the active Dokploy instance. Local development
+uses the existing checkout. Generated production deployments enable a managed
+checkout at `/app/data/repository`, clone the public repository on first access,
+and update it with the **Refresh projects** button.
 
 1. Create and deploy the Zot service on the active Dokploy instance, with an
    enabled HTTPS domain.
@@ -84,6 +90,18 @@ older tags are shown as previous versions. Individual local and Zot tags can be
 deleted from their respective lists. Deleting the current image requires an
 explicit confirmation; previous versions are removed immediately.
 
+Build and push operations run as process-local background jobs, so navigation
+does not interrupt them. Returning to Projects restores their running or final
+state and refreshes the image inventories when they finish. Restarting the local
+development server clears the displayed job history and interrupts active jobs.
+
+Local builds of Infra Management create a consistent SQLite backup and embed it
+as an image seed. On first startup with an empty `/app/data` volume, the container
+copies that seed to the production database path. Existing persistent databases
+are never overwritten by a newer image. The seed contains stored credentials, so
+access to the image and private Zot registry is equivalent to access to the local
+database.
+
 Before replacing `latest`, a build preserves the previous local image under one
 immutable `build-<UTC timestamp>` tag. The new image is tagged only as `latest`.
 Pushing publishes older local builds under their immutable tags before updating
@@ -93,8 +111,13 @@ versions retained from earlier builds or pushes.
 Local images use `<project-name>:<tag>` and pushed images use
 `<zot-domain>/<project-name>:<tag>`; a leading numeric folder prefix such as
 `01-` is removed. Push authenticates with the active instance's stored default
-service credentials, which are also used when the Zot service is created. The
-page, navigation item, and actions are disabled outside development.
+service credentials, which are also used when the Zot service is created.
+Generated Infra Management deployments install Git and the Docker CLI, create a
+persistent `infra-management-data` volume at `/app/data`, and bind-mount the host
+Docker socket. Project routes remain disabled in other production deployments
+unless `PROJECT_BUILDS_ENABLED=true` is explicitly configured. Access to the
+Docker socket is equivalent to administrative access to the VPS; retain the
+single trusted-administrator security boundary.
 
 ## Deploy with Dockploy
 
@@ -108,8 +131,12 @@ Infra Management using the repository application picker.
    required by `better-sqlite3`; no extra build environment variables are needed.
 3. When created from the repository application picker, the app automatically
    uses the active instance's default service credentials and generates its
-   `ADMIN_PASSWORD_HASH`, `AUTH_SECRET`, and `NEXTAUTH_URL`. For a manually
+   `INFRA_SERVICES_DEFAULT_USERNAME`, `INFRA_SERVICES_DEFAULT_PASSWORD`,
+   `AUTH_SECRET`, and `NEXTAUTH_URL`. For a manually
    created deployment, configure every required environment variable yourself.
+   The generated environment also forwards the current dashboard's server-only
+   `CLOUDFLARE_API_TOKEN` so Cloudflare management is available in the deployed
+   copy.
 4. Expose port `3000`, attach the public domain, and enable HTTPS.
 5. Mount persistent application storage at `/app/data`. The application writes
    `/app/data/infra-management.sqlite` automatically. Without that mount,
@@ -126,10 +153,11 @@ prefix.
 The Add Dockploy instance form can provision a new Ubuntu or Debian VPS. Saving
 the form stores the instance before provisioning begins. The setup panel then
 enables one sequential step at a time; run each step manually, or enable
-Automatic to continue with each next step after the previous one succeeds. Create
-the Cloudflare DNS record for `dockploy.<root-domain>` first, then leave the
-API/CLI key empty. The local server uses the default service password for root
-SSH, resolves the VPS IP from the domain,
+Automatic to continue with each next step after the previous one succeeds.
+Configure the root domain's apex A record in Cloudflare first, then leave the
+API/CLI key empty. The form loads the root domain and VPS IP from Cloudflare and
+verifies that the root domain resolves to that IP. The local server uses the
+default service password for root SSH,
 updates installed APT packages, installs Dokploy with the official installer,
 creates the first Dokploy administrator using the default service credentials,
 assigns the HTTPS domain, generates an API/CLI key, and stores the verified
@@ -138,10 +166,9 @@ instance.
 Use an email address for the default service username during provisioning.
 Password SSH must be enabled for `root`. The VPS IP and default service password are stored
 in the secret-bearing instance configuration in SQLite for future server
-operations. If the IP is omitted, the application resolves
-`dockploy.<root-domain>` and stores the resulting address; use a DNS-only
-Cloudflare record so this resolves to the origin VPS rather than a Cloudflare
-edge. Provisioning can take several minutes and may fail when ports 80, 443,
+operations. Use a DNS-only apex Cloudflare A record so the root domain resolves
+to the origin VPS rather than a Cloudflare edge. Provisioning can take several
+minutes and may fail when ports 80, 443,
 or 3000 are already occupied, the DNS record has not propagated, or the server
 requires a reboot to finish package upgrades.
 
@@ -150,7 +177,6 @@ requires a reboot to finish package upgrades.
 - All pages and API routes are protected except login and framework assets. Future API route handlers must still check the session explicitly.
 - Five failed logins from one client IP within 15 minutes trigger a 15-minute lockout. Restarting the process clears this state.
 - Never log credentials or environment values, and never commit `.env` files.
-- If every login fails after deployment, verify that environment-variable expansion did not alter the bcrypt hash.
-- Dokploy variables should normally use the raw bcrypt hash. Authentication also
-  accepts the `\$`-escaped form used in Next.js environment files.
+- If every login fails after deployment, verify both uppercase
+  `INFRA_SERVICES_DEFAULT_*` environment variables are configured consistently.
 - If Dokploy data cannot load, verify the URL, API key, container network reachability, and application logs.

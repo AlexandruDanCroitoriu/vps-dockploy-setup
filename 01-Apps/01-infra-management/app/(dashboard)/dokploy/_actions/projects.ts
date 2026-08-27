@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import {
   createDokployProject,
   deployDokployService,
+  getActiveDokployInstanceSummary,
   getDokployProject,
   getDokployServiceStatus,
   hasDokployServiceContainer,
@@ -13,6 +14,7 @@ import {
   updateDokployProjectEnv,
   updateDokployProjectName,
 } from "@/lib/dokploy";
+import { refreshSidebarProjectSnapshot } from "@/lib/dokploy/sidebar-project-snapshot";
 import {
   getActionError,
   requireAuthenticatedSession,
@@ -45,7 +47,9 @@ export async function deleteProjectAction(
       };
     }
     await removeDokployProject(projectId);
-    revalidatePath("/dokploy");
+    const instance = await getActiveDokployInstanceSummary();
+    if (instance) await refreshSidebarProjectSnapshot(instance.id);
+    revalidatePath("/dokploy", "layout");
     return { status: "success", message: "Project deleted." };
   } catch (error) {
     return getActionError(

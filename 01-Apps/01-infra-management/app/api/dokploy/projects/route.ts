@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/auth";
 import {
   getActiveDokployInstanceSummary,
+  getFreshDokployProjects,
   getDokployProjects,
   getServiceTypeLabel,
   isDatabaseService,
@@ -24,11 +25,12 @@ export async function GET(request: Request) {
     );
   }
 
+  const forceRefresh = new URL(request.url).searchParams.get("refresh") === "1";
   const projectSnapshot = await getSidebarProjectSnapshot(
     instance.id,
-    getDokployProjects,
+    forceRefresh ? getFreshDokployProjects : getDokployProjects,
     {
-      forceRefresh: new URL(request.url).searchParams.get("refresh") === "1",
+      forceRefresh,
     },
   );
   const snapshot = {

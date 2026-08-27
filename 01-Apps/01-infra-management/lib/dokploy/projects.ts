@@ -1,13 +1,15 @@
 import "server-only";
 
 import { cache } from "react";
-import { dokployGet, dokployPost } from "./client";
+import { dokployGet, dokployGetFresh, dokployPost } from "./client";
 import { DokployApiError } from "./errors";
 import { isRecord, normalizeProject } from "./normalizers";
 import type { DokployProject } from "./types";
 
-export const getDokployProjects = cache(async (): Promise<DokployProject[]> => {
-  const payload = await dokployGet<unknown>("project.all");
+async function loadDokployProjects(
+  get: <T = unknown>(endpoint: string) => Promise<T>,
+): Promise<DokployProject[]> {
+  const payload = await get<unknown>("project.all");
   if (!Array.isArray(payload)) {
     throw new Error("Dokploy returned an unexpected projects response.");
   }
@@ -18,7 +20,7 @@ export const getDokployProjects = cache(async (): Promise<DokployProject[]> => {
   return Promise.all(
     summaries.map(async (summary) => {
       try {
-        const payload = await dokployGet<unknown>(
+        const payload = await get<unknown>(
           `project.one?${new URLSearchParams({ projectId: summary.projectId })}`,
         );
         return (
@@ -33,11 +35,20 @@ export const getDokployProjects = cache(async (): Promise<DokployProject[]> => {
       }
     }),
   );
-});
+}
 
-async function fetchDokployProject(projectId: string) {
+export const getDokployProjects = cache(() => loadDokployProjects(dokployGet));
+
+export function getFreshDokployProjects() {
+  return loadDokployProjects(dokployGetFresh);
+}
+
+async function fetchDokployProject(
+  projectId: string,
+  get: <T = unknown>(endpoint: string) => Promise<T>,
+) {
   try {
-    const payload = await dokployGet<unknown>(
+    const payload = await get<unknown>(
       `project.one?${new URLSearchParams({ projectId })}`,
     );
     const project = normalizeProject(
@@ -52,14 +63,16 @@ async function fetchDokployProject(projectId: string) {
       throw error;
     }
   }
-  const projects = await getDokployProjects();
+  const projects = await loadDokployProjects(get);
   return projects.find((project) => project.projectId === projectId) ?? null;
 }
 
-export const getDokployProject = cache(fetchDokployProject);
+export const getDokployProject = cache((projectId: string) =>
+  fetchDokployProject(projectId, dokployGet),
+);
 
 export function getFreshDokployProject(projectId: string) {
-  return fetchDokployProject(projectId);
+  return fetchDokployProject(projectId, dokployGetFresh);
 }
 
 export async function updateDokployProjectEnv(projectId: string, env: string) {

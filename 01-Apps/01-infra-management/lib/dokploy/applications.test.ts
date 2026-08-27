@@ -158,6 +158,18 @@ describe("Docker applications", () => {
         registryUsername: "registry-user",
         registryPassword: "registry-password",
         environmentVariables: 'AUTH_SECRET="generated-secret"',
+        mounts: [
+          {
+            type: "volume",
+            volumeName: "infra-management-data",
+            mountPath: "/app/data",
+          },
+          {
+            type: "bind",
+            hostPath: "/var/run/docker.sock",
+            mountPath: "/var/run/docker.sock",
+          },
+        ],
       }),
     ).resolves.toBe("application-1");
 
@@ -178,6 +190,20 @@ describe("Docker applications", () => {
         password: "registry-password",
       },
     );
+    expect(dokployPost).toHaveBeenCalledWith("mounts.create", {
+      serviceType: "application",
+      serviceId: "application-1",
+      type: "volume",
+      volumeName: "infra-management-data",
+      mountPath: "/app/data",
+    });
+    expect(dokployPost).toHaveBeenCalledWith("mounts.create", {
+      serviceType: "application",
+      serviceId: "application-1",
+      type: "bind",
+      hostPath: "/var/run/docker.sock",
+      mountPath: "/var/run/docker.sock",
+    });
   });
 
   it("removes a Docker application when registry setup fails", async () => {

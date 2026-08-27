@@ -1,17 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
-vi.mock("./client", () => ({ dokployGet: vi.fn(), dokployPost: vi.fn() }));
+vi.mock("./client", () => ({
+  dokployGet: vi.fn(),
+  dokployGetFresh: vi.fn(),
+  dokployPost: vi.fn(),
+}));
 
 import {
   getDokployProjects,
+  getFreshDokployProject,
+  getFreshDokployProjects,
   mergeDokployProjectEnv,
   parseDokployEnvironmentEntries,
   removeDokployProjectEnvEntries,
 } from "./projects";
-import { dokployGet } from "./client";
+import { dokployGet, dokployGetFresh } from "./client";
 
-beforeEach(() => vi.mocked(dokployGet).mockReset());
+beforeEach(() => {
+  vi.mocked(dokployGet).mockReset();
+  vi.mocked(dokployGetFresh).mockReset();
+});
 
 describe("project loading", () => {
   it("hydrates sparse project-list databases with project details", async () => {
@@ -61,6 +70,41 @@ describe("project loading", () => {
       2,
       "project.one?projectId=project-1",
     );
+  });
+
+  it("bypasses the cached transport for a forced project refresh", async () => {
+    vi.mocked(dokployGetFresh).mockResolvedValueOnce([]);
+
+    await expect(getFreshDokployProjects()).resolves.toEqual([]);
+
+    expect(dokployGetFresh).toHaveBeenCalledWith("project.all");
+    expect(dokployGet).not.toHaveBeenCalled();
+  });
+
+  it("bypasses the cached transport when refreshing one project", async () => {
+    vi.mocked(dokployGetFresh).mockResolvedValueOnce({
+      projectId: "project-1",
+      name: "Main",
+      environments: [
+        {
+          environmentId: "env-1",
+          name: "Production",
+          compose: [{ composeId: "zot-1", name: "Zot" }],
+        },
+      ],
+    });
+
+    const project = await getFreshDokployProject("project-1");
+
+    expect(project?.environments[0].services[0]).toMatchObject({
+      id: "zot-1",
+      name: "Zot",
+      type: "compose",
+    });
+    expect(dokployGetFresh).toHaveBeenCalledWith(
+      "project.one?projectId=project-1",
+    );
+    expect(dokployGet).not.toHaveBeenCalled();
   });
 });
 

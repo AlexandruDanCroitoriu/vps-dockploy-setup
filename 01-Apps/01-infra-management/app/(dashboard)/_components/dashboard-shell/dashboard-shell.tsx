@@ -8,7 +8,10 @@ import type {
   SidebarProject,
   SidebarProjectsPayload,
 } from "@/lib/dokploy/sidebar-project-types";
-import { PROJECTS_CHANGED_EVENT } from "@/lib/project-events";
+import {
+  PROJECT_DELETED_EVENT,
+  PROJECTS_CHANGED_EVENT,
+} from "@/lib/project-events";
 import type { DokployInstanceSummary } from "@/lib/storage/dokploy-instances";
 import { Sidebar } from "./sidebar";
 
@@ -20,6 +23,7 @@ export function DashboardShell({
   activeInstanceId,
   dokployAvailable,
   dokployRootUrl,
+  projectBuildsEnabled,
   userName,
 }: {
   children: React.ReactNode;
@@ -29,6 +33,7 @@ export function DashboardShell({
   activeInstanceId: string | null;
   dokployAvailable: boolean;
   dokployRootUrl: string;
+  projectBuildsEnabled: boolean;
   userName: string;
 }) {
   const pathname = usePathname();
@@ -73,12 +78,23 @@ export function DashboardShell({
     function handleProjectsChanged() {
       void reloadProjects(true);
     }
+    function handleProjectDeleted(event: Event) {
+      const projectId = (event as CustomEvent<{ projectId?: unknown }>).detail
+        ?.projectId;
+      if (typeof projectId !== "string") return;
+      setProjects((current) =>
+        current.filter((project) => project.projectId !== projectId),
+      );
+      void reloadProjects(true);
+    }
     void reloadProjects();
     window.addEventListener(PROJECTS_CHANGED_EVENT, handleProjectsChanged);
+    window.addEventListener(PROJECT_DELETED_EVENT, handleProjectDeleted);
     return () => {
       controller?.abort();
       if (pollTimer) clearTimeout(pollTimer);
       window.removeEventListener(PROJECTS_CHANGED_EVENT, handleProjectsChanged);
+      window.removeEventListener(PROJECT_DELETED_EVENT, handleProjectDeleted);
     };
   }, [activeInstanceId, dokployAvailable]);
 
@@ -107,6 +123,7 @@ export function DashboardShell({
               activeInstanceId={activeInstanceId}
               dokployAvailable={dokployAvailable}
               dokployRootUrl={dokployRootUrl}
+              projectBuildsEnabled={projectBuildsEnabled}
               userName={userName}
               onNavigate={() => setSidebarOpen(false)}
             />
@@ -121,6 +138,7 @@ export function DashboardShell({
           activeInstanceId={activeInstanceId}
           dokployAvailable={dokployAvailable}
           dokployRootUrl={dokployRootUrl}
+          projectBuildsEnabled={projectBuildsEnabled}
           userName={userName}
         />
       </div>

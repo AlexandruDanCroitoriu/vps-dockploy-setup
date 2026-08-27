@@ -32,14 +32,20 @@ export function ActionMessage({
   status,
   message,
 }: {
-  status: "idle" | "success" | "error";
+  status: "idle" | "running" | "success" | "error";
   message: string;
 }) {
   if (!message) return null;
   return (
     <p
       role="status"
-      className={`text-sm ${status === "error" ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}
+      className={`text-sm ${
+        status === "error"
+          ? "text-red-600 dark:text-red-400"
+          : status === "running"
+            ? "text-amber-600 dark:text-amber-300"
+            : "text-emerald-600 dark:text-emerald-400"
+      }`}
     >
       {message}
     </p>

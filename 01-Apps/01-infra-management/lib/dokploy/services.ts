@@ -1,7 +1,7 @@
 import "server-only";
 
 import { cache } from "react";
-import { dokployGet, dokployPost } from "./client";
+import { dokployGet, dokployGetFresh, dokployPost } from "./client";
 import { SERVICE_ENDPOINTS } from "./constants";
 import {
   containersFromResponse,
@@ -14,11 +14,14 @@ import {
 import { getDokployProject } from "./projects";
 import type { DokployService, DokployServiceType } from "./types";
 
-async function withServiceDetails(service: DokployService) {
+async function withServiceDetails(
+  service: DokployService,
+  get: (endpoint: string) => Promise<unknown> = dokployGet,
+) {
   const endpoint = SERVICE_ENDPOINTS[service.type];
   const query = new URLSearchParams({ [endpoint.idParameter]: service.id });
   try {
-    const payload = await dokployGet<unknown>(`${endpoint.path}.one?${query}`);
+    const payload = await get(`${endpoint.path}.one?${query}`);
     const details = isRecord(payload)
       ? isRecord(payload.data)
         ? payload.data
@@ -80,6 +83,13 @@ export async function resolveDokployLiveStatus(
 export const getDokployServiceStatus = cache(async (service: DokployService) =>
   resolveDokployLiveStatus(await withServiceDetails(service)),
 );
+
+export async function getFreshDokployServiceStatus(service: DokployService) {
+  return resolveDokployLiveStatus(
+    await withServiceDetails(service, dokployGetFresh),
+    dokployGetFresh,
+  );
+}
 
 export const getDokployLiveServiceStatus = cache(
   async (service: DokployService) => resolveDokployLiveStatus(service),

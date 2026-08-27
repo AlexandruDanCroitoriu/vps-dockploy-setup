@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState, useTransition } from "react";
 import type { DokployInstanceSummary } from "@/lib/storage/dokploy-instances";
 import {
@@ -20,6 +20,7 @@ export function DokployInstanceSelector({
   onNavigate?: () => void;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState("");
@@ -48,7 +49,7 @@ export function DokployInstanceSelector({
                 return;
               }
               onNavigate?.();
-              router.push("/?addDockploy=1");
+              router.push("/instance?addDockploy=1");
             });
             return;
           }
@@ -59,6 +60,13 @@ export function DokployInstanceSelector({
               return;
             }
             onNavigate?.();
+            if (pathname === "/projects" || pathname === "/dokploy") {
+              router.refresh();
+            } else if (pathname.startsWith("/dokploy/")) {
+              router.replace("/dokploy");
+            } else {
+              router.replace("/instance");
+            }
           });
         }}
         className="block w-full rounded-md border border-gray-300 bg-white px-2.5 py-2 text-sm font-medium text-gray-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-60 dark:border-white/10 dark:bg-gray-800 dark:text-gray-100"

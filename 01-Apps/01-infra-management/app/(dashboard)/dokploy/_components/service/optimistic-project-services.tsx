@@ -19,7 +19,18 @@ import {
   type PendingProjectService,
   type ProjectServiceCreationDetail,
 } from "@/lib/project-events";
-import { usePeriodicRouterRefresh } from "../use-periodic-router-refresh";
+import {
+  getServiceTypeLabel,
+  isDatabaseService,
+} from "@/lib/dokploy/constants";
+import {
+  DOKPLOY_SERVICE_TYPES,
+  type DokployService,
+  type DokployServiceType,
+} from "@/lib/dokploy/types";
+import { DatabaseCredentials } from "../database/database-credentials";
+import { EnvironmentVariableEditor } from "../environment/environment-variable-editor";
+import { ServiceLifecycleButtons } from "./service-lifecycle-buttons";
 
 type ExistingService = { id: string; name: string; type: string };
 
@@ -60,6 +71,16 @@ export function OptimisticProjectServices({
   const [liveDomains, setLiveDomains] = useState<
     Record<string, Array<{ domainId: string; host: string; https: boolean }>>
   >({});
+  const [liveMetadata, setLiveMetadata] = useState<
+    Record<
+      string,
+      {
+        appName: string;
+        env: string;
+        credentials: DokployService["credentials"];
+      }
+    >
+  >({});
 
   const visibleExistingServices = useMemo(
     () =>
@@ -71,11 +92,12 @@ export function OptimisticProjectServices({
     () =>
       pendingServices.filter(
         (pending) =>
+          (!pending.serviceId || !deletedServiceIds.has(pending.serviceId)) &&
           !visibleExistingServices.some((existing) =>
             matchesExistingService(pending, existing),
           ),
       ),
-    [pendingServices, visibleExistingServices],
+    [deletedServiceIds, pendingServices, visibleExistingServices],
   );
 
   useEffect(() => {
@@ -164,8 +186,6 @@ export function OptimisticProjectServices({
       );
   }, [projectId]);
 
-  usePeriodicRouterRefresh(visiblePendingServices.length > 0, 2_000);
-
   useEffect(() => {
     const createdServices = visiblePendingServices.filter(
       (service) =>
@@ -185,6 +205,9 @@ export function OptimisticProjectServices({
           if (!response.ok) return;
           const result = (await response.json()) as {
             status?: "running" | "deploying" | "down";
+            appName?: string | null;
+            env?: string;
+            credentials?: DokployService["credentials"];
             domains?: Array<{
               domainId: string;
               host: string;
@@ -197,6 +220,14 @@ export function OptimisticProjectServices({
               ? current
               : { ...current, [service.requestId]: result.status! },
           );
+          setLiveMetadata((current) => ({
+            ...current,
+            [service.requestId]: {
+              appName: result.appName ?? "",
+              env: result.env ?? "",
+              credentials: result.credentials ?? [],
+            },
+          }));
           if (result.domains) {
             setLiveDomains((current) => {
               const previous = current[service.requestId] ?? [];
@@ -232,61 +263,101 @@ export function OptimisticProjectServices({
     <PendingServicesContext.Provider value={visiblePendingServices}>
       {visiblePendingServices.length > 0 && (
         <ul className="mt-3 grid gap-2">
-          {visiblePendingServices.map((service) => (
-            <li
-              key={service.requestId}
-              className="flex min-w-0 items-center gap-2.5 rounded-md border border-gray-200 bg-white px-3 py-2.5 dark:border-white/10 dark:bg-gray-900/50"
-            >
-              <CubeIcon className="size-4 shrink-0 text-indigo-500" />
-              <div className="min-w-0 flex-1">
-                <div className="flex min-w-0 items-center gap-2">
-                  <span
-                    className={`size-2.5 shrink-0 rounded-full ${
-                      liveStatuses[service.requestId] === "running"
-                        ? "bg-emerald-500"
-                        : liveStatuses[service.requestId] === "down"
-                          ? "bg-red-500"
-                          : "animate-pulse bg-amber-400"
-                    }`}
-                  />
-                  <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
-                    {service.displayName}
-                  </p>
-                </div>
-                <p className="truncate text-xs text-gray-500 dark:text-gray-400">
-                  {service.typeLabel} ·{" "}
-                  {service.serviceId
-                    ? liveStatuses[service.requestId] === "running"
-                      ? "Running"
-                      : liveStatuses[service.requestId] === "down"
-                        ? "Down"
-                        : "Deploying…"
-                    : "Creating…"}
-                </p>
-                {(liveDomains[service.requestId] ?? []).length > 0 && (
-                  <div className="mt-1 flex min-w-0 flex-wrap gap-x-3 gap-y-1">
-                    {liveDomains[service.requestId].map((domain) => (
-                      <a
-                        key={domain.domainId}
-                        href={`${domain.https ? "https" : "http"}://${domain.host}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title={`Open ${domain.host}`}
-                        className="inline-flex min-w-0 items-center gap-1 text-[11px] text-indigo-600 hover:text-indigo-500 hover:underline dark:text-indigo-300 dark:hover:text-indigo-200"
-                      >
-                        <span className="max-w-52 truncate">{domain.host}</span>
-                        <ArrowTopRightOnSquareIcon
-                          className="size-3 shrink-0"
-                          aria-hidden="true"
-                        />
-                      </a>
-                    ))}
+          {visiblePendingServices.map((service) => {
+            const serviceType = DOKPLOY_SERVICE_TYPES.includes(
+              service.serviceType as DokployServiceType,
+            )
+              ? (service.serviceType as DokployServiceType)
+              : null;
+            const status = liveStatuses[service.requestId] ?? "deploying";
+            const metadata = liveMetadata[service.requestId];
+            return (
+              <li
+                key={service.requestId}
+                className="flex min-w-0 items-center gap-2.5 rounded-md border border-gray-200 bg-white px-3 py-2.5 dark:border-white/10 dark:bg-gray-900/50"
+              >
+                <CubeIcon className="size-4 shrink-0 text-indigo-500" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span
+                      className={`size-2.5 shrink-0 rounded-full ${
+                        liveStatuses[service.requestId] === "running"
+                          ? "bg-emerald-500"
+                          : liveStatuses[service.requestId] === "down"
+                            ? "bg-red-500"
+                            : "animate-pulse bg-amber-400"
+                      }`}
+                    />
+                    <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+                      {service.displayName}
+                    </p>
                   </div>
+                  <p className="truncate text-xs text-gray-500 dark:text-gray-400">
+                    {service.typeLabel} ·{" "}
+                    {service.serviceId
+                      ? liveStatuses[service.requestId] === "running"
+                        ? "Running"
+                        : liveStatuses[service.requestId] === "down"
+                          ? "Down"
+                          : "Deploying…"
+                      : "Creating…"}
+                  </p>
+                  {(liveDomains[service.requestId] ?? []).length > 0 && (
+                    <div className="mt-1 flex min-w-0 flex-wrap gap-x-3 gap-y-1">
+                      {liveDomains[service.requestId].map((domain) => (
+                        <a
+                          key={domain.domainId}
+                          href={`${domain.https ? "https" : "http"}://${domain.host}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={`Open ${domain.host}`}
+                          className="inline-flex min-w-0 items-center gap-1 text-[11px] text-indigo-600 hover:text-indigo-500 hover:underline dark:text-indigo-300 dark:hover:text-indigo-200"
+                        >
+                          <span className="max-w-52 truncate">
+                            {domain.host}
+                          </span>
+                          <ArrowTopRightOnSquareIcon
+                            className="size-3 shrink-0"
+                            aria-hidden="true"
+                          />
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {service.serviceId && serviceType ? (
+                  <>
+                    {isDatabaseService(serviceType) && metadata && (
+                      <DatabaseCredentials
+                        credentials={metadata.credentials}
+                        databaseName={getServiceTypeLabel(serviceType)}
+                      />
+                    )}
+                    {!isDatabaseService(serviceType) && metadata && (
+                      <EnvironmentVariableEditor
+                        target="service"
+                        targetId={service.serviceId}
+                        targetName={service.displayName}
+                        serviceType={serviceType}
+                        initialValue={metadata.env}
+                      />
+                    )}
+                    <ServiceLifecycleButtons
+                      projectId={projectId}
+                      serviceId={service.serviceId}
+                      serviceName={service.displayName}
+                      appName={metadata?.appName ?? ""}
+                      serviceType={serviceType}
+                      status={status}
+                      compactMenu
+                    />
+                  </>
+                ) : (
+                  <span className="size-7 shrink-0 animate-pulse rounded-md bg-gray-100 dark:bg-white/5" />
                 )}
-              </div>
-              <span className="size-7 shrink-0 animate-pulse rounded-md bg-gray-100 dark:bg-white/5" />
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ul>
       )}
       {children}

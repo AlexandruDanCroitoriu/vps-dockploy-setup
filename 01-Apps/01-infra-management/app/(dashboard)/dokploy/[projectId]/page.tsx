@@ -11,7 +11,10 @@ import {
   getActiveDokployProjectSnapshot,
 } from "@/lib/dokploy/sidebar-project-snapshot";
 import { getUnavailableComposeServiceDefinitionIds } from "@/compose-services/registry";
-import { getRepositoryApplicationsResult } from "@/lib/github/repository-applications";
+import {
+  getRepositoryApplicationDeployments,
+  getRepositoryApplicationsResult,
+} from "@/lib/github/repository-applications";
 import { getInfraManagementZotImage } from "@/lib/zot/infra-management-image";
 
 import { ProjectCard } from "../_components/project/project-card";
@@ -52,6 +55,8 @@ async function ProjectContent({
   ]);
 
   if (!project) notFound();
+  const deployedRepositoryApplications =
+    getRepositoryApplicationDeployments(projects);
 
   return (
     <div>
@@ -85,6 +90,7 @@ async function ProjectContent({
           unavailableComposeDefinitionIds={getUnavailableComposeServiceDefinitionIds(
             projects,
           )}
+          deployedRepositoryApplications={deployedRepositoryApplications}
         />
       </div>
     </div>

@@ -6,6 +6,12 @@ import {
 import { DokployInstanceForm } from "./_components/dokploy-instances/dokploy-instance-form";
 import { DeleteDokployInstanceButton } from "./_components/dokploy-instances/delete-dokploy-instance-button";
 import { getDokployInstance } from "@/lib/storage/dokploy-instances";
+import {
+  CloudflareConfigurationError,
+  getCloudflareZones,
+} from "@/lib/cloudflare/zones";
+import { inspectDokployBootstrapResources } from "@/lib/dokploy/bootstrap-zot";
+import { reconcileDokployResourceSteps } from "@/lib/storage/dokploy-provisioning";
 
 export default async function Home({
   searchParams,
@@ -24,16 +30,47 @@ export default async function Home({
   const query = await searchParams;
   const explicitlyAddingInstance = query.addDockploy === "1";
   const addingInstance = !activeInstance || explicitlyAddingInstance;
-  const provisioningJob = !explicitlyAddingInstance
+  let provisioningJob = !explicitlyAddingInstance
     ? activeProvisioningJob
     : null;
+  if (
+    provisioningJob?.status === "complete" &&
+    provisioningJob.apiKey &&
+    provisioningJob.instanceId
+  ) {
+    try {
+      const resources = await inspectDokployBootstrapResources({
+        baseUrl: `http://${provisioningJob.vpsIp}:3000`,
+        apiKey: provisioningJob.apiKey,
+      });
+      provisioningJob = reconcileDokployResourceSteps(
+        provisioningJob.id,
+        resources,
+      );
+    } catch {
+      // Keep the last known step state when live Dokploy inspection is unavailable.
+    }
+  }
   const visibleProvisioningJob =
     provisioningJob?.status !== "complete" ? provisioningJob : null;
+  let cloudflareDomains: { name: string; ipAddress: string }[] = [];
+  let cloudflareError = "";
+
+  try {
+    cloudflareDomains = (await getCloudflareZones()).map(
+      ({ name, ipAddress }) => ({ name, ipAddress }),
+    );
+  } catch (cause) {
+    cloudflareError =
+      cause instanceof CloudflareConfigurationError
+        ? "Configure CLOUDFLARE_API_TOKEN to load domains."
+        : "Unable to load domains from Cloudflare.";
+  }
 
   return (
     <div className="mx-auto max-w-6xl">
       <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
-        Dashboard
+        Instance
       </h1>
 
       <section className="mt-6 rounded-lg border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-gray-800/40">
@@ -76,9 +113,11 @@ export default async function Home({
                 }
           }
           provisioningJob={provisioningJob}
+          cloudflareDomains={cloudflareDomains}
+          cloudflareError={cloudflareError}
           newInstanceDefaults={{
-            username: process.env.infra_services_default_username?.trim() ?? "",
-            password: process.env.infra_services_default_password ?? "",
+            username: process.env.INFRA_SERVICES_DEFAULT_USERNAME?.trim() ?? "",
+            password: process.env.INFRA_SERVICES_DEFAULT_PASSWORD ?? "",
           }}
         />
       </section>

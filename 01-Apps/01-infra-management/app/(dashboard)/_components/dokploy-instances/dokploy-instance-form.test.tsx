@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({
@@ -8,7 +8,7 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("../../_actions/dokploy-instances", () => ({
   createDokployInstanceAction: vi.fn(),
-  resolveDokployVpsIpAction: vi.fn(),
+  verifyRootDomainIpAction: vi.fn(),
   updateDokployInstanceAction: vi.fn(),
 }));
 
@@ -35,11 +35,25 @@ describe("DokployInstanceForm", () => {
 
     expect(screen.getByText("Default service credentials")).toBeTruthy();
     expect(
-      (screen.getByLabelText(/VPS IP address/) as HTMLInputElement).value,
+      (screen.getByLabelText(/Cloudflare IP address/) as HTMLInputElement)
+        .value,
     ).toBe("203.0.113.10");
     expect(
-      (screen.getByLabelText(/VPS IP address/) as HTMLInputElement).readOnly,
+      (screen.getByLabelText(/Cloudflare IP address/) as HTMLInputElement)
+        .readOnly,
     ).toBe(true);
+    expect(
+      (screen.getByLabelText("Root domain") as HTMLSelectElement).disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByLabelText(/Cloudflare IP address/) as HTMLInputElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      screen.getByText(
+        "The domain cannot be changed after the instance is created.",
+      ),
+    ).toBeTruthy();
     expect(
       (screen.getByLabelText("Default email") as HTMLInputElement).value,
     ).toBe("service-user");
@@ -51,13 +65,28 @@ describe("DokployInstanceForm", () => {
     ).toBe("api-key");
     expect(
       (screen.getByLabelText("API/CLI key") as HTMLInputElement).readOnly,
-    ).toBe(false);
+    ).toBe(true);
+    expect(
+      (screen.getByLabelText("Default email") as HTMLInputElement).readOnly,
+    ).toBe(true);
+    expect(
+      (screen.getByLabelText("Default password") as HTMLInputElement).readOnly,
+    ).toBe(true);
+    expect(
+      screen.getByRole("button", { name: "Copy default password" }),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show default password" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Hide default password" }),
+    ).toBeTruthy();
   });
 
   it("uses admin service defaults when adding an instance", () => {
     render(<DokployInstanceForm instance={null} />);
     expect(
-      screen.getByRole("button", { name: "Save new instance" }),
+      screen.getByRole("button", { name: "Add new instance" }),
     ).toBeTruthy();
     expect(
       screen.getByText("Save the instance to enable the first setup step."),
@@ -83,6 +112,48 @@ describe("DokployInstanceForm", () => {
     expect(
       (screen.getByLabelText("API/CLI key") as HTMLInputElement).readOnly,
     ).toBe(true);
+  });
+
+  it("selects a Cloudflare domain and uses its apex IP", () => {
+    render(
+      <DokployInstanceForm
+        instance={null}
+        cloudflareDomains={[
+          { name: "example.com", ipAddress: "203.0.113.10" },
+          { name: "missing.example", ipAddress: "" },
+        ]}
+      />,
+    );
+
+    const domain = screen.getByLabelText("Root domain") as HTMLSelectElement;
+    expect(domain.tagName).toBe("SELECT");
+    expect(
+      (
+        screen.getByRole("option", {
+          name: /missing\.example/,
+        }) as HTMLOptionElement
+      ).disabled,
+    ).toBe(true);
+
+    fireEvent.change(domain, { target: { value: "example.com" } });
+
+    expect(
+      (screen.getByLabelText("Cloudflare IP address") as HTMLInputElement)
+        .value,
+    ).toBe("203.0.113.10");
+    const ipLink = screen.getByRole("link", {
+      name: "Open Dockploy using IP address",
+    });
+    expect(ipLink.getAttribute("href")).toBe("http://203.0.113.10:3000");
+    expect(ipLink.getAttribute("target")).toBe("_blank");
+
+    const domainLink = screen.getByRole("link", {
+      name: "Open Dockploy using domain",
+    });
+    expect(domainLink.getAttribute("href")).toBe(
+      "https://dockploy.example.com",
+    );
+    expect(domainLink.getAttribute("target")).toBe("_blank");
   });
 
   it("shows sequential manual setup controls for a saved instance", () => {
@@ -175,13 +246,18 @@ describe("DokployInstanceForm", () => {
     expect(screen.getAllByRole("button", { name: "Completed" })).toHaveLength(
       7,
     );
-    expect(
-      (
-        screen.getByRole("button", {
-          name: "Verify and save changes",
-        }) as HTMLButtonElement
-      ).disabled,
-    ).toBe(false);
+    const saveButton = screen.getByRole("button", {
+      name: "Save changes",
+    }) as HTMLButtonElement;
+    expect(saveButton.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Renamed production" },
+    });
+    expect(saveButton.disabled).toBe(false);
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Production" },
+    });
+    expect(saveButton.disabled).toBe(true);
     expect(screen.getByText("Deployment queued.")).toBeTruthy();
   });
 

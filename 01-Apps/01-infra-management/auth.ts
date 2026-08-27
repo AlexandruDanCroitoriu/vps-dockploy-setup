@@ -1,6 +1,5 @@
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
-import bcrypt from "bcryptjs";
 import { createHash, timingSafeEqual } from "node:crypto";
 
 const SESSION_MAX_AGE = 8 * 60 * 60;
@@ -85,11 +84,7 @@ function getRequiredEnvironmentVariable(name: string) {
   return value;
 }
 
-export function normalizeAdminPasswordHash(hash: string) {
-  return hash.replaceAll("\\$", "$");
-}
-
-function stringsMatch(left: string, right: string) {
+export function credentialValuesMatch(left: string, right: string) {
   const leftDigest = createHash("sha256").update(left).digest();
   const rightDigest = createHash("sha256").update(right).digest();
 
@@ -138,14 +133,20 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        const adminUsername = getRequiredEnvironmentVariable("ADMIN_USERNAME");
-        const passwordHash = normalizeAdminPasswordHash(
-          getRequiredEnvironmentVariable("ADMIN_PASSWORD_HASH"),
+        const adminUsername = getRequiredEnvironmentVariable(
+          "INFRA_SERVICES_DEFAULT_USERNAME",
+        );
+        const adminPassword = getRequiredEnvironmentVariable(
+          "INFRA_SERVICES_DEFAULT_PASSWORD",
         );
 
         const [validPassword, validUsername] = await Promise.all([
-          bcrypt.compare(credentials.password, passwordHash),
-          Promise.resolve(stringsMatch(credentials.username, adminUsername)),
+          Promise.resolve(
+            credentialValuesMatch(credentials.password, adminPassword),
+          ),
+          Promise.resolve(
+            credentialValuesMatch(credentials.username, adminUsername),
+          ),
         ]);
 
         if (!validUsername || !validPassword) {

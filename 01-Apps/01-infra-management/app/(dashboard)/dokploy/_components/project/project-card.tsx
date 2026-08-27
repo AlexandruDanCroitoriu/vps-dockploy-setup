@@ -1,4 +1,4 @@
-import { CubeIcon } from "@heroicons/react/24/outline";
+import { CubeIcon, FolderIcon } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { Suspense } from "react";
 
@@ -13,6 +13,10 @@ import {
 import { getServicePresentationSnapshot } from "@/lib/dokploy/service-presentation-snapshot";
 import { composeServiceOptions } from "@/compose-services/registry";
 import type { RepositoryApplication } from "@/lib/github/repository-applications";
+import {
+  getRepositoryApplicationDeployments,
+  type RepositoryApplicationDeployment,
+} from "@/lib/github/repository-applications";
 
 import { AddDatabaseDialog } from "../database/add-database-dialog";
 import { AddApplicationDialog } from "../application/add-application-dialog";
@@ -40,7 +44,9 @@ export function ProjectCard({
   infraManagementImageAvailability,
   rootDomain,
   defaultServiceCredentials,
+  dokployRootUrl = "",
   unavailableComposeDefinitionIds = [],
+  deployedRepositoryApplications,
 }: {
   project: DokployProject;
   editableName?: boolean;
@@ -55,7 +61,9 @@ export function ProjectCard({
   };
   rootDomain: string;
   defaultServiceCredentials: { username: string; password: string };
+  dokployRootUrl?: string;
   unavailableComposeDefinitionIds?: string[];
+  deployedRepositoryApplications?: RepositoryApplicationDeployment[];
 }) {
   const services = project.environments.flatMap((environment) =>
     environment.services.map((service) => ({
@@ -70,21 +78,35 @@ export function ProjectCard({
       <div className="p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">
-              {editableName ? (
-                <ProjectNameEditor
-                  projectId={project.projectId}
-                  initialName={project.name}
-                />
-              ) : (
-                <Link
-                  href={`/dokploy/${encodeURIComponent(project.projectId)}`}
-                  className="hover:text-indigo-600 dark:hover:text-indigo-300"
+            <div className="flex min-w-0 items-center gap-2">
+              {dokployRootUrl && project.environments[0]?.environmentId && (
+                <a
+                  href={`${dokployRootUrl}/dashboard/project/${encodeURIComponent(project.projectId)}/environment/${encodeURIComponent(project.environments[0].environmentId)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={`Open ${project.name} in Dokploy`}
+                  aria-label={`Open ${project.name} in Dokploy`}
+                  className="shrink-0 rounded p-1 text-indigo-500 hover:bg-indigo-50 hover:text-indigo-700 dark:hover:bg-indigo-500/10 dark:hover:text-indigo-300"
                 >
-                  {project.name}
-                </Link>
+                  <FolderIcon className="size-4" aria-hidden="true" />
+                </a>
               )}
-            </h2>
+              <h2 className="min-w-0 truncate text-base font-semibold text-gray-900 dark:text-gray-100">
+                {editableName ? (
+                  <ProjectNameEditor
+                    projectId={project.projectId}
+                    initialName={project.name}
+                  />
+                ) : (
+                  <Link
+                    href={`/dokploy/${encodeURIComponent(project.projectId)}`}
+                    className="hover:text-indigo-600 dark:hover:text-indigo-300"
+                  >
+                    {project.name}
+                  </Link>
+                )}
+              </h2>
+            </div>
             {project.description && (
               <p className="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">
                 {project.description}
@@ -112,15 +134,10 @@ export function ProjectCard({
                   }
                 }
                 rootDomain={rootDomain}
-                deployedApplications={project.environments.flatMap(
-                  (environment) =>
-                    environment.services
-                      .filter((service) => service.type === "applications")
-                      .map((service) => ({
-                        name: service.name,
-                        sourcePath: service.sourcePath,
-                      })),
-                )}
+                deployedApplications={
+                  deployedRepositoryApplications ??
+                  getRepositoryApplicationDeployments([project])
+                }
               />
             )}
             <AddDatabaseDialog
@@ -186,10 +203,11 @@ export function ProjectCard({
               }
             >
               <ProjectServices
-                services={services.map(({ service }) => service)}
+                services={services}
                 projectId={project.projectId}
                 linkServices={linkServices}
                 serviceActionsMenu={serviceActionsMenu}
+                dokployRootUrl={dokployRootUrl}
               />
             </Suspense>
           )}
@@ -228,15 +246,17 @@ async function ProjectServices({
   projectId,
   linkServices,
   serviceActionsMenu,
+  dokployRootUrl,
 }: {
-  services: DokployService[];
+  services: Array<{ environmentId: string; service: DokployService }>;
   projectId: string;
   linkServices: boolean;
   serviceActionsMenu: boolean;
+  dokployRootUrl: string;
 }) {
   const presentation = await getServicePresentationSnapshot(
     projectId,
-    services,
+    services.map(({ service }) => service),
   );
   const resolvedServices = presentation.services;
 
@@ -257,6 +277,11 @@ async function ProjectServices({
             <OptimisticServiceVisibilityGuard service={service}>
               <ServiceCard
                 service={service}
+                dokployHref={
+                  dokployRootUrl
+                    ? `${dokployRootUrl}/dashboard/project/${encodeURIComponent(projectId)}/environment/${encodeURIComponent(services[index].environmentId)}/services/${service.type === "applications" ? "application" : service.type}/${encodeURIComponent(service.id)}`
+                    : undefined
+                }
                 domains={presentation.domains[index] ?? []}
                 projectId={projectId}
                 serviceActionsMenu={serviceActionsMenu}

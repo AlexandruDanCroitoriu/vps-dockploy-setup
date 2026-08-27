@@ -143,11 +143,50 @@ describe("OptimisticProjectServices", () => {
     ).toBeInTheDocument();
   });
 
+  it("hides a newly created optimistic service after it is deleted", () => {
+    render(
+      <OptimisticProjectServices projectId="project-1" existingServices={[]}>
+        {null}
+      </OptimisticProjectServices>,
+    );
+
+    act(() => {
+      notifyProjectServiceCreation({
+        phase: "started",
+        service: {
+          requestId: "request-garage",
+          projectId: "project-1",
+          matchName: "Garage with UI",
+          displayName: "Garage with UI",
+          typeLabel: "Compose",
+          serviceType: "compose",
+        },
+      });
+      notifyProjectServiceCreation({
+        phase: "completed",
+        requestId: "request-garage",
+        projectId: "project-1",
+        serviceId: "compose-garage",
+      });
+    });
+    expect(screen.getByText("Garage with UI")).toBeInTheDocument();
+
+    act(() => notifyProjectServiceDeleted("project-1", "compose-garage"));
+
+    expect(screen.queryByText("Garage with UI")).not.toBeInTheDocument();
+    expect(
+      screen.getByText("No services in this project."),
+    ).toBeInTheDocument();
+  });
+
   it("shows the live status while the project snapshot catches up", async () => {
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
       json: async () => ({
         status: "running",
+        appName: "compose-dbgate",
+        env: "DATABASE_URL=postgres://db",
+        credentials: [],
         domains: [
           {
             domainId: "domain-1",
@@ -189,6 +228,14 @@ describe("OptimisticProjectServices", () => {
     expect(
       screen.getByRole("link", { name: /dbgate\.example\.com/ }),
     ).toHaveAttribute("href", "https://dbgate.example.com");
+    expect(
+      screen.getByRole("button", { name: "Settings for DBGate" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "Edit variables for DBGate",
+      }),
+    ).toBeInTheDocument();
     expect(fetch).toHaveBeenCalledWith(
       "/api/dokploy/projects/project-1/services/compose/compose-1",
     );

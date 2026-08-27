@@ -1,10 +1,44 @@
 import "server-only";
 
 import { execFile, spawn } from "node:child_process";
+import { access, chmod, unlink } from "node:fs/promises";
 import { promisify } from "node:util";
+import path from "node:path";
+import Database from "better-sqlite3";
 
 const execFileAsync = promisify(execFile);
 const DOCKER_OUTPUT_LIMIT = 16_000;
+const INFRA_MANAGEMENT_DIRECTORY = "01-infra-management";
+const INFRA_MANAGEMENT_SEED = ".infra-management-seed.sqlite";
+
+export async function createInfraManagementDatabaseSeed(
+  projectDirectory: string,
+) {
+  const seedPath = path.join(projectDirectory, INFRA_MANAGEMENT_SEED);
+  const sourcePath = path.resolve(
+    process.env.SQLITE_DATABASE_PATH ||
+      (process.env.NODE_ENV === "production"
+        ? "/app/data/infra-management.sqlite"
+        : path.join(projectDirectory, "data", "infra-management.sqlite")),
+  );
+  await unlink(seedPath).catch(() => undefined);
+  if (
+    !(await access(sourcePath)
+      .then(() => true)
+      .catch(() => false))
+  ) {
+    return null;
+  }
+
+  const source = new Database(sourcePath, { readonly: true });
+  try {
+    await source.backup(seedPath);
+    await chmod(seedPath, 0o600);
+    return seedPath;
+  } finally {
+    source.close();
+  }
+}
 
 export type DockerCommandResult = {
   image: string;
@@ -21,6 +55,21 @@ export type LocalDockerImage = {
 
 export function isValidDockerTag(value: string) {
   return /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/.test(value);
+}
+
+export function isDockerDaemonUnavailableError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return [
+    /cannot connect to the docker daemon/i,
+    /is the docker daemon running/i,
+    /error during connect/i,
+    /failed to connect.+docker\.sock/i,
+    /docker_engine.+(?:file|path).+not found/i,
+    /docker\.sock.+(?:no such file|connection refused)/i,
+    /docker.+could not be found/i,
+    /activate the wsl integration in docker desktop/i,
+    /spawn docker enoent/i,
+  ].some((pattern) => pattern.test(message));
 }
 
 function truncateOutput(value: string) {
@@ -216,20 +265,31 @@ export async function buildDockerImage({
   projectDirectory: string;
   image: string;
 }): Promise<DockerCommandResult> {
-  const buildOutput = await runDocker([
-    "build",
-    "--pull",
-    "--tag",
-    image,
-    projectDirectory,
-  ]);
+  const seedPath = path.join(projectDirectory, INFRA_MANAGEMENT_SEED);
+  const shouldSeed =
+    path.basename(projectDirectory) === INFRA_MANAGEMENT_DIRECTORY;
+  try {
+    if (shouldSeed) {
+      await createInfraManagementDatabaseSeed(projectDirectory);
+    }
 
-  return {
-    image,
-    output: truncateOutput(
-      [`Built ${image}`, buildOutput].filter(Boolean).join("\n\n"),
-    ),
-  };
+    const buildOutput = await runDocker([
+      "build",
+      "--pull",
+      "--tag",
+      image,
+      projectDirectory,
+    ]);
+
+    return {
+      image,
+      output: truncateOutput(
+        [`Built ${image}`, buildOutput].filter(Boolean).join("\n\n"),
+      ),
+    };
+  } finally {
+    if (shouldSeed) await unlink(seedPath).catch(() => undefined);
+  }
 }
 
 export async function pushDockerImage({

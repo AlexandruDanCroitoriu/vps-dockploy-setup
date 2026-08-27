@@ -4,6 +4,8 @@ import {
   getRepositoryApplications,
   getRepositoryApplicationsResult,
   getRepositoryApplicationDefaultHost,
+  isRepositoryApplicationDeployed,
+  matchesRepositoryApplicationInput,
 } from "./repository-applications";
 
 describe("repository application discovery", () => {
@@ -32,5 +34,33 @@ describe("repository application discovery", () => {
     expect(
       getRepositoryApplicationDefaultHost(application, "infra.example.com"),
     ).toBe("infra.example.com");
+  });
+
+  it("detects a repository application anywhere on the instance", async () => {
+    const [application] = await getRepositoryApplications();
+
+    expect(
+      isRepositoryApplicationDeployed(application, [
+        { name: "unrelated", sourcePath: null },
+        { name: "01-infra-management", sourcePath: null },
+      ]),
+    ).toBe(true);
+    expect(
+      isRepositoryApplicationDeployed(application, [
+        { name: "renamed", sourcePath: "/01-Apps/01-infra-management/" },
+      ]),
+    ).toBe(true);
+  });
+
+  it("matches submitted repository coordinates with normalized paths", async () => {
+    const [application] = await getRepositoryApplications();
+
+    expect(
+      matchesRepositoryApplicationInput(application, {
+        owner: application.owner,
+        repository: application.repository,
+        buildPath: `/${application.path}/`,
+      }),
+    ).toBe(true);
   });
 });

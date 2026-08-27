@@ -52,6 +52,10 @@ export type CreateDokployDockerApplicationInput = {
   registryUsername: string;
   registryPassword: string;
   environmentVariables?: string;
+  mounts?: Array<
+    | { type: "bind"; hostPath: string; mountPath: string }
+    | { type: "volume"; volumeName: string; mountPath: string }
+  >;
   domain?: {
     host: string;
     port: number;
@@ -115,6 +119,17 @@ export async function createDokployDockerApplication(
         buildArgs: null,
         buildSecrets: null,
         createEnvFile: false,
+      });
+    }
+    for (const mount of input.mounts ?? []) {
+      await dokployPost("mounts.create", {
+        serviceType: "application",
+        serviceId: applicationId,
+        type: mount.type,
+        mountPath: mount.mountPath,
+        ...(mount.type === "bind"
+          ? { hostPath: mount.hostPath }
+          : { volumeName: mount.volumeName }),
       });
     }
     if (input.domain) {

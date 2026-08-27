@@ -13,6 +13,7 @@ import {
 import {
   deployDokployZotRegistry,
   ensureDokployMainProject,
+  inspectDokployBootstrapResources,
 } from "./bootstrap-zot";
 
 const configuration = {
@@ -26,6 +27,28 @@ beforeEach(() => {
 });
 
 describe("Zot instance bootstrap", () => {
+  it("detects an existing Main project and Zot service", async () => {
+    const project = {
+      projectId: "project-main",
+      name: "Main",
+      environments: [
+        {
+          environmentId: "production",
+          name: "Production",
+          compose: [{ composeId: "compose-zot", name: "Zot" }],
+        },
+      ],
+    };
+    vi.mocked(dokployGetWithConfiguration)
+      .mockResolvedValueOnce([project])
+      .mockResolvedValueOnce(project);
+
+    await expect(
+      inspectDokployBootstrapResources(configuration),
+    ).resolves.toEqual({ mainProjectExists: true, zotExists: true });
+    expect(dokployPostWithConfiguration).not.toHaveBeenCalled();
+  });
+
   it("creates main and deploys Zot when the instance has no Zot service", async () => {
     const mainProject = {
       projectId: "project-main",

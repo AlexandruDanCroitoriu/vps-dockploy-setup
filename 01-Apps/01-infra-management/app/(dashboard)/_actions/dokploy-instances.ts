@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
-import { lookup } from "node:dns/promises";
+import { resolve4 } from "node:dns/promises";
 import { isIP } from "node:net";
 import { ACTIVE_DOKPLOY_COOKIE, verifyDokployConnection } from "@/lib/dokploy";
 import {
@@ -18,6 +18,7 @@ import {
   getDokployProvisioningJob,
   startDokployProvisioningJob,
 } from "@/lib/storage/dokploy-provisioning";
+import { getCloudflareZones } from "@/lib/cloudflare/zones";
 import {
   requireAuthenticatedSession,
   SESSION_EXPIRED_STATE,
@@ -33,26 +34,49 @@ type ParsedInstanceForm = {
   defaultServicePassword: string;
 };
 
-async function resolveVpsIp(rootDomain: string) {
+async function verifyRootDomainIp(rootDomain: string, expectedIp: string) {
   try {
-    return (await lookup(`dockploy.${rootDomain}`)).address;
+    const addresses = await resolve4(rootDomain);
+    if (!addresses.includes(expectedIp)) {
+      throw new Error(
+        `${rootDomain} resolves to ${addresses.join(", ")}, not ${expectedIp}.`,
+      );
+    }
+    return expectedIp;
   } catch {
-    throw new Error(
-      `Unable to resolve dockploy.${rootDomain} to a VPS IP address.`,
-    );
+    throw new Error(`${rootDomain} does not resolve to ${expectedIp}.`);
   }
 }
 
-export async function resolveDokployVpsIpAction(rootDomain: string) {
+async function getCloudflareDomainIp(rootDomain: string) {
+  const zone = (await getCloudflareZones()).find(
+    ({ name }) => name.toLowerCase() === rootDomain.toLowerCase(),
+  );
+  if (!zone?.ipAddress || !isIP(zone.ipAddress)) {
+    throw new Error(
+      `${rootDomain} does not have an apex A record in Cloudflare.`,
+    );
+  }
+  return zone.ipAddress;
+}
+
+export async function verifyRootDomainIpAction(
+  rootDomain: string,
+  expectedIp: string,
+) {
   if (!(await requireAuthenticatedSession())) {
     return { status: "error" as const, message: SESSION_EXPIRED_STATE.message };
   }
 
   try {
     const normalizedDomain = normalizeRootDomain(rootDomain);
+    const cloudflareIp = await getCloudflareDomainIp(normalizedDomain);
+    if (cloudflareIp !== expectedIp) {
+      throw new Error("The Cloudflare domain IP changed. Select it again.");
+    }
     return {
       status: "success" as const,
-      ipAddress: await resolveVpsIp(normalizedDomain),
+      ipAddress: await verifyRootDomainIp(normalizedDomain, cloudflareIp),
     };
   } catch (error) {
     return {
@@ -60,7 +84,7 @@ export async function resolveDokployVpsIpAction(rootDomain: string) {
       message:
         error instanceof Error
           ? error.message
-          : "Unable to resolve the Dockploy domain.",
+          : "Unable to verify the root domain.",
     };
   }
 }
@@ -125,6 +149,19 @@ export async function createDokployInstanceAction(
   const submittedIpAddress = formData.get("ipAddress")?.toString().trim() ?? "";
   const parsed = parseInstanceForm(formData, "", true);
   if ("status" in parsed) return parsed;
+  const configuredUsername =
+    process.env.INFRA_SERVICES_DEFAULT_USERNAME?.trim() ?? "";
+  const configuredPassword = process.env.INFRA_SERVICES_DEFAULT_PASSWORD ?? "";
+  if (
+    parsed.apiKey ||
+    parsed.defaultServiceUsername !== configuredUsername ||
+    parsed.defaultServicePassword !== configuredPassword
+  ) {
+    return {
+      status: "error",
+      message: "The default credentials and API/CLI key cannot be changed.",
+    };
+  }
 
   if (submittedIpAddress && !isIP(submittedIpAddress)) {
     return { status: "error", message: "Enter a valid VPS IP address." };
@@ -138,8 +175,14 @@ export async function createDokployInstanceAction(
   }
 
   try {
-    const ipAddress =
-      submittedIpAddress || (await resolveVpsIp(parsed.rootDomain));
+    const cloudflareIp = await getCloudflareDomainIp(parsed.rootDomain);
+    if (submittedIpAddress !== cloudflareIp) {
+      return {
+        status: "error",
+        message: "The selected Cloudflare IP is no longer current.",
+      };
+    }
+    const ipAddress = await verifyRootDomainIp(parsed.rootDomain, cloudflareIp);
     const instance = createDokployInstance({
       ...parsed,
       apiKey: "",
@@ -270,16 +313,36 @@ export async function updateDokployInstanceAction(
   if (submittedVpsIp && !isIP(submittedVpsIp)) {
     return { status: "error", message: "Enter a valid VPS IP address." };
   }
+  if (
+    parsed.rootDomain !== current.rootDomain ||
+    submittedVpsIp !== current.vpsIp
+  ) {
+    return {
+      status: "error",
+      message: "The domain and Cloudflare IP cannot be changed after creation.",
+    };
+  }
+  if (
+    parsed.apiKey !== current.apiKey ||
+    parsed.defaultServiceUsername !== current.defaultServiceUsername ||
+    parsed.defaultServicePassword !== current.defaultServicePassword
+  ) {
+    return {
+      status: "error",
+      message: "The default credentials and API/CLI key cannot be changed.",
+    };
+  }
 
   try {
-    const vpsIp = submittedVpsIp || (await resolveVpsIp(parsed.rootDomain));
     await verifyDokployConnection({
-      baseUrl: parsed.rootUrl,
+      baseUrl: current.rootUrl,
       apiKey: parsed.apiKey,
     });
     const updated = updateDokployInstance(instanceId, {
       ...parsed,
-      vpsIp,
+      rootDomain: current.rootDomain,
+      rootUrl: current.rootUrl,
+      vpsIp: current.vpsIp,
       vpsPassword: parsed.defaultServicePassword,
     });
     if (!updated) {

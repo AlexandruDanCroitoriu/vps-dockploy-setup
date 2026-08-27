@@ -224,6 +224,33 @@ export function completeDokployProvisioningStep(
   });
 }
 
+export function reconcileDokployResourceSteps(
+  id: string,
+  resources: { mainProjectExists: boolean; zotExists: boolean },
+) {
+  const job = getDokployProvisioningJob(id);
+  if (!job) return null;
+
+  let changed = false;
+  if (!resources.mainProjectExists && job.steps["main-project"] === "done") {
+    delete job.steps["main-project"];
+    changed = true;
+  }
+  if (!resources.zotExists && job.steps.zot === "done") {
+    delete job.steps.zot;
+    changed = true;
+  }
+  if (!changed) return job;
+
+  getDatabase()
+    .prepare(
+      `UPDATE dokploy_provisioning_jobs
+       SET status='waiting', steps_json=?, error='', updated_at=? WHERE id=?`,
+    )
+    .run(JSON.stringify(job.steps), new Date().toISOString(), id);
+  return getDokployProvisioningJob(id);
+}
+
 export function failDokployProvisioningStep(
   id: string,
   step: DokployBootstrapStep,

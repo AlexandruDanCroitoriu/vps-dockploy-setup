@@ -11,6 +11,7 @@ import {
 import type { SidebarProject } from "@/lib/dokploy/sidebar-project-types";
 import { readSidebarProjectSnapshot } from "@/lib/dokploy/sidebar-project-snapshot";
 import { getDokployInstanceSummary } from "@/lib/storage/dokploy-instances";
+import { areProjectBuildsEnabled } from "@/lib/repository-workspace";
 import { DashboardShell } from "./_components/dashboard-shell/dashboard-shell";
 
 export default async function DashboardLayout({
@@ -75,15 +76,24 @@ export default async function DashboardLayout({
       ),
     }),
   );
+  const sidebarStateKey = projects
+    .map(
+      (project) =>
+        `${project.projectId}:${project.services
+          .map((service) => `${service.type}:${service.id}`)
+          .join(",")}`,
+    )
+    .join("|");
   return (
     <DashboardShell
-      key={activeInstance?.id ?? "no-active-instance"}
+      key={`${activeInstance?.id ?? "no-active-instance"}:${sidebarStateKey}`}
       initialProjects={projects}
       initialProjectsError={result.error}
       instances={instances}
       activeInstanceId={activeInstance?.id ?? activeInstanceId}
       dokployAvailable={dokployReady}
       dokployRootUrl={activeInstance?.rootUrl ?? ""}
+      projectBuildsEnabled={areProjectBuildsEnabled()}
       userName={session?.user?.name || "Administrator"}
     >
       {children}

@@ -9,13 +9,23 @@ import {
   TrashIcon,
 } from "@heroicons/react/24/outline";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useState, useTransition } from "react";
+import {
+  useActionState,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 
 import { Button } from "@/components/ui/button";
 import { AppDialog } from "@/components/ui/dialog";
 import {
+  notifyProjectDeleted,
   notifyProjectsChanged,
   notifyProjectServiceDeleted,
+  PROJECT_SERVICE_CREATION_EVENT,
+  type PendingProjectService,
+  type ProjectServiceCreationDetail,
 } from "@/lib/project-events";
 
 import {
@@ -54,22 +64,36 @@ export function ProjectSettingsMenu({
   const [deletedServiceIds, setDeletedServiceIds] = useState<Set<string>>(
     () => new Set(),
   );
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [serviceDeleteErrors, setServiceDeleteErrors] = useState<
     Record<string, string>
   >({});
+  const [createdServices, setCreatedServices] = useState<
+    Array<{ id: string; type: string; name: string }>
+  >([]);
+  const pendingCreatedServices = useRef(
+    new Map<string, PendingProjectService>(),
+  );
   const router = useRouter();
-  const visibleServices = services.filter(
-    (service) => !deletedServiceIds.has(service.id),
+  const visibleServices = [...services, ...createdServices].filter(
+    (service, index, all) =>
+      !deletedServiceIds.has(service.id) &&
+      all.findIndex((candidate) => candidate.id === service.id) === index,
   );
   const serviceCount = visibleServices.length;
   const busy = pending || submitting || deletePending;
-  const deletingServices = deletingServiceIds.size > 0;
+  const deletingServices = deletingServiceIds.size > 0 || bulkDeleting;
 
   function updateAllServices(operation: "deploy" | "start" | "stop") {
     setOperation(operation);
     const formData = new FormData();
     formData.set("operation", operation);
     startTransition(() => formAction(formData));
+  }
+
+  function closeDeleteDialog() {
+    if (busy || deletingServices) return;
+    setDeleteOpen(false);
   }
 
   async function deleteService(serviceId: string, serviceType: string) {
@@ -92,8 +116,8 @@ export function ProjectSettingsMenu({
       }
       setDeletedServiceIds((current) => new Set(current).add(serviceId));
       notifyProjectServiceDeleted(projectId, serviceId);
-      router.refresh();
       notifyProjectsChanged();
+      return true;
     } catch (error) {
       setServiceDeleteErrors((current) => ({
         ...current,
@@ -102,6 +126,7 @@ export function ProjectSettingsMenu({
             ? error.message
             : "Unable to delete the service.",
       }));
+      return false;
     } finally {
       setDeletingServiceIds((current) => {
         const next = new Set(current);
@@ -111,6 +136,63 @@ export function ProjectSettingsMenu({
     }
   }
 
+  async function deleteAllServices() {
+    if (deletingServices || visibleServices.length === 0) return;
+    setBulkDeleting(true);
+    try {
+      for (const service of visibleServices) {
+        await deleteService(service.id, service.type);
+      }
+    } finally {
+      setBulkDeleting(false);
+    }
+  }
+
+  useEffect(() => {
+    function trackCreatedService(event: Event) {
+      const detail = (event as CustomEvent<ProjectServiceCreationDetail>)
+        .detail;
+      const eventProjectId =
+        detail.phase === "started"
+          ? detail.service.projectId
+          : detail.projectId;
+      if (eventProjectId !== projectId) return;
+
+      if (detail.phase === "started") {
+        pendingCreatedServices.current.set(
+          detail.service.requestId,
+          detail.service,
+        );
+        return;
+      }
+      const pending = pendingCreatedServices.current.get(detail.requestId);
+      pendingCreatedServices.current.delete(detail.requestId);
+      if (detail.phase !== "completed" || !pending) return;
+      setCreatedServices((current) =>
+        current.some((service) => service.id === detail.serviceId)
+          ? current
+          : [
+              ...current,
+              {
+                id: detail.serviceId,
+                type: pending.serviceType,
+                name: pending.displayName,
+              },
+            ],
+      );
+    }
+
+    window.addEventListener(
+      PROJECT_SERVICE_CREATION_EVENT,
+      trackCreatedService,
+    );
+    return () =>
+      window.removeEventListener(
+        PROJECT_SERVICE_CREATION_EVENT,
+        trackCreatedService,
+      );
+  }, [projectId]);
+
   useEffect(() => {
     if (state.status === "success") router.refresh();
   }, [router, state.status]);
@@ -119,10 +201,11 @@ export function ProjectSettingsMenu({
     if (deleteState.status !== "success") return;
     queueMicrotask(() => {
       setDeleteOpen(false);
+      notifyProjectDeleted(projectId);
       router.push("/dokploy");
       router.refresh();
     });
-  }, [deleteState.status, router]);
+  }, [deleteState.status, projectId, router]);
 
   return (
     <>
@@ -199,7 +282,7 @@ export function ProjectSettingsMenu({
       </Menu>
       <AppDialog
         open={deleteOpen}
-        onClose={() => !busy && !deletingServices && setDeleteOpen(false)}
+        onClose={closeDeleteDialog}
         title="Delete project?"
         description={`Permanently delete ${projectName}. This action cannot be undone.`}
         footer={
@@ -208,7 +291,7 @@ export function ProjectSettingsMenu({
               type="button"
               variant="secondary"
               size="xs"
-              onClick={() => setDeleteOpen(false)}
+              onClick={closeDeleteDialog}
               disabled={busy || deletingServices}
             >
               Cancel
@@ -232,12 +315,24 @@ export function ProjectSettingsMenu({
         >
           {serviceCount > 0 ? (
             <div className="space-y-2">
-              <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-300">
-                Remove the project&apos;s {serviceCount}{" "}
-                {serviceCount === 1 ? "service" : "services"} before deleting
-                it. Service configuration and Compose volumes will be
-                permanently removed.
-              </p>
+              <div className="flex items-center justify-between gap-3 rounded-md bg-amber-50 px-3 py-2 dark:bg-amber-500/10">
+                <p className="text-sm text-amber-800 dark:text-amber-300">
+                  Remove the project&apos;s {serviceCount}{" "}
+                  {serviceCount === 1 ? "service" : "services"} before deleting
+                  it. Service configuration and Compose volumes will be
+                  permanently removed.
+                </p>
+                <Button
+                  type="button"
+                  variant="danger"
+                  size="xs"
+                  className="shrink-0"
+                  disabled={busy || deletingServices}
+                  onClick={deleteAllServices}
+                >
+                  {bulkDeleting ? "Deleting all…" : "Delete all services"}
+                </Button>
+              </div>
               <ul className="divide-y divide-gray-200 rounded-md border border-gray-200 dark:divide-white/10 dark:border-white/10">
                 {visibleServices.map((service) => {
                   const deleting = deletingServiceIds.has(service.id);
@@ -262,7 +357,7 @@ export function ProjectSettingsMenu({
                         type="button"
                         variant="danger"
                         size="xs"
-                        disabled={busy || deleting}
+                        disabled={busy || deletingServices || deleting}
                         onClick={() => deleteService(service.id, service.type)}
                       >
                         {deleting ? "Deleting…" : "Delete"}

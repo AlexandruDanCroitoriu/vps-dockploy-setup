@@ -1,7 +1,6 @@
 "use client";
 
 import { Squares2X2Icon } from "@heroicons/react/24/outline";
-import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -59,7 +58,6 @@ export function ServiceTemplateDropdown({
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [error, setError] = useState("");
   const ref = useClickOutside<HTMLDivElement>(open, setOpen);
-  const router = useRouter();
   const templateUnavailable = services.some(
     (service) =>
       service.type === "postgres" ||
@@ -146,7 +144,6 @@ export function ServiceTemplateDropdown({
             "Template deployment failed.",
         );
       }
-      router.refresh();
       notifyProjectsChanged();
     } catch {
       for (const requestId of requests.values()) {

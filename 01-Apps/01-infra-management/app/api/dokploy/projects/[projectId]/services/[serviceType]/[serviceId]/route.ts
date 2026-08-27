@@ -12,6 +12,7 @@ import {
   getActiveDokployInstanceSummary,
   DOKPLOY_SERVICE_TYPES,
   getFreshDokployProject,
+  getFreshDokployServiceStatus,
   getDokployDomains,
   getDokployProject,
   getDokployServiceStatus,
@@ -25,6 +26,7 @@ import {
   updateDokployServiceEnv,
   type DokployServiceType,
 } from "@/lib/dokploy";
+import { refreshSidebarProjectSnapshot } from "@/lib/dokploy/sidebar-project-snapshot";
 
 export async function GET(
   _request: Request,
@@ -42,7 +44,8 @@ export async function GET(
   if (!session?.user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (!(await getActiveDokployInstanceSummary())) {
+  const instance = await getActiveDokployInstanceSummary();
+  if (!instance) {
     return Response.json(
       { error: "No Dockploy instance is selected." },
       { status: 409 },
@@ -66,7 +69,7 @@ export async function GET(
     if (!project) {
       return Response.json({ error: "Project not found." }, { status: 404 });
     }
-    const service = await getDokployServiceStatus({
+    const service = await getFreshDokployServiceStatus({
       id: serviceId,
       name: "",
       appName: null,
@@ -84,7 +87,10 @@ export async function GET(
     return Response.json({
       id: service.id,
       name: service.name,
+      appName: service.appName,
+      env: service.env,
       status: service.status,
+      credentials: service.credentials,
       domains,
     });
   } catch {
@@ -111,7 +117,8 @@ export async function DELETE(
   if (!session?.user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (!(await getActiveDokployInstanceSummary())) {
+  const instance = await getActiveDokployInstanceSummary();
+  if (!instance) {
     return Response.json(
       { error: "No Dockploy instance is selected." },
       { status: 409 },
@@ -127,7 +134,7 @@ export async function DELETE(
   }
 
   try {
-    const project = await getDokployProject(projectId);
+    const project = await getFreshDokployProject(projectId);
     const service = project?.environments
       .flatMap((environment) => environment.services)
       .find(
@@ -201,8 +208,9 @@ export async function DELETE(
         ),
       );
     }
+    await refreshSidebarProjectSnapshot(instance.id);
     revalidatePath("/dokploy");
-    revalidatePath(`/dokploy/${projectId}`);
+    revalidatePath(`/dokploy/${projectId}`, "layout");
     return Response.json({ success: true });
   } catch {
     return Response.json(

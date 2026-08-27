@@ -26,6 +26,7 @@
 # local SQLite data and sidecar files
 /data/*.sqlite
 /data/*.sqlite-*
+/.infra-management-seed.sqlite
 
 # misc
 .DS_Store

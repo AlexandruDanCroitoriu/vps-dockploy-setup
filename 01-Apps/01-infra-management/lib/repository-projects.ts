@@ -2,6 +2,10 @@ import "server-only";
 
 import { readdir } from "node:fs/promises";
 import path from "node:path";
+import {
+  getManagedRepositoryPath,
+  usesManagedRepositoryCheckout,
+} from "./repository-workspace";
 
 export type RepositoryProject = {
   name: string;
@@ -11,7 +15,9 @@ export type RepositoryProject = {
 };
 
 export function getRepositoryAppsDirectory() {
-  return path.resolve(process.cwd(), "..");
+  return usesManagedRepositoryCheckout()
+    ? path.join(getManagedRepositoryPath(), "01-Apps")
+    : path.resolve(process.cwd(), "..");
 }
 
 export function getProjectImageRepository(projectName: string) {

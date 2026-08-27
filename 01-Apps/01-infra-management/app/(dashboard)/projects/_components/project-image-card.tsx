@@ -1,27 +1,37 @@
 "use client";
 
 import {
+  ArrowPathIcon,
+  ArrowTopRightOnSquareIcon,
   ArrowUpTrayIcon,
   CubeIcon,
   TrashIcon,
 } from "@heroicons/react/24/outline";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect } from "react";
+import {
+  useActionState,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { Button } from "@/components/ui/button";
-import { ActionMessage, FormField } from "@/components/ui/form-field";
-import { Input } from "@/components/ui/input";
+import { ActionMessage } from "@/components/ui/form-field";
 import type { LocalDockerImage } from "@/lib/docker/local-image-builder";
+import type { ImageJob } from "@/lib/docker/image-jobs";
 import type { RepositoryProject } from "@/lib/repository-projects";
 import type { ZotRegistryImage } from "@/lib/zot/registry-images";
 
 import {
+  buildAndPushProjectImageAction,
   buildProjectImageAction,
   type BuildImageState,
   deleteLocalProjectImageAction,
   deleteZotProjectImageAction,
   pushProjectImageAction,
 } from "../_actions/build-image";
+import { RefreshZotButton } from "./refresh-zot-button";
 
 const initialState: BuildImageState = { status: "idle", message: "" };
 
@@ -30,15 +40,19 @@ export function ProjectImageCard({
   zotRegistryHost,
   localImages,
   localImagesError,
+  dockerAvailable,
   zotImages,
   zotImagesError,
+  initialJob,
 }: {
   project: RepositoryProject;
   zotRegistryHost: string;
   localImages: LocalDockerImage[];
   localImagesError: string;
+  dockerAvailable: boolean;
   zotImages: ZotRegistryImage[];
   zotImagesError: string;
+  initialJob: ImageJob | null;
 }) {
   const [buildState, buildAction, buildPending] = useActionState(
     buildProjectImageAction,
@@ -48,19 +62,75 @@ export function ProjectImageCard({
     pushProjectImageAction,
     initialState,
   );
+  const [buildPushState, buildPushAction, buildPushPending] = useActionState(
+    buildAndPushProjectImageAction,
+    initialState,
+  );
   const [localDeleteState, localDeleteAction, localDeletePending] =
     useActionState(deleteLocalProjectImageAction, initialState);
   const [zotDeleteState, zotDeleteAction, zotDeletePending] = useActionState(
     deleteZotProjectImageAction,
     initialState,
   );
-  const state = pushState.status !== "idle" ? pushState : buildState;
+  const [job, setJob] = useState(initialJob);
+  const previousJobStatus = useRef(initialJob?.status);
   const router = useRouter();
+  const refreshJob = useCallback(async () => {
+    const response = await fetch("/api/projects/image-jobs", {
+      cache: "no-store",
+    });
+    if (!response.ok) return;
+    const payload = (await response.json()) as { jobs?: ImageJob[] };
+    const nextJob = payload.jobs?.find(
+      (candidate) => candidate.projectName === project.name,
+    );
+    if (nextJob) setJob(nextJob);
+  }, [project.name]);
+
+  const currentJob = [job, buildState.job, pushState.job, buildPushState.job]
+    .filter(
+      (candidate): candidate is ImageJob =>
+        candidate !== null && candidate !== undefined,
+    )
+    .sort((left, right) => right.startedAt.localeCompare(left.startedAt))[0];
+
+  useEffect(() => {
+    if (currentJob?.status !== "running") return;
+    const initialTimer = window.setTimeout(() => void refreshJob(), 0);
+    const pollTimer = window.setInterval(() => void refreshJob(), 2_000);
+    return () => {
+      window.clearTimeout(initialTimer);
+      window.clearInterval(pollTimer);
+    };
+  }, [currentJob?.startedAt, currentJob?.status, refreshJob]);
+
+  useEffect(() => {
+    if (
+      previousJobStatus.current === "running" &&
+      currentJob?.status !== "running"
+    ) {
+      router.refresh();
+    }
+    previousJobStatus.current = currentJob?.status;
+  }, [currentJob?.status, router]);
+
+  const actionState =
+    buildPushState.status !== "idle"
+      ? buildPushState
+      : pushState.status !== "idle"
+        ? pushState
+        : buildState;
+  const state = currentJob ?? actionState;
+  const jobRunning = currentJob?.status === "running";
+  const building = jobRunning && currentJob.type === "build";
+  const pushing = jobRunning && currentJob.type === "push";
+  const buildingAndPushing = jobRunning && currentJob.type === "build-push";
 
   useEffect(() => {
     if (
       buildState.status === "success" ||
       pushState.status === "success" ||
+      buildPushState.status === "success" ||
       localDeleteState.status === "success" ||
       zotDeleteState.status === "success"
     ) {
@@ -69,62 +139,53 @@ export function ProjectImageCard({
   }, [
     buildState.status,
     pushState.status,
+    buildPushState.status,
     localDeleteState.status,
     zotDeleteState.status,
     router,
   ]);
-  const localImage = `${project.imageRepository}:<tag>`;
-  const zotImage = zotRegistryHost
-    ? `${zotRegistryHost}/${project.imageRepository}:<tag>`
-    : "No Zot registry available";
-
   return (
     <article className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-gray-800/50">
-      <div className="flex items-start gap-3">
-        <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">
-          <CubeIcon className="size-5" aria-hidden="true" />
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">
+            <CubeIcon className="size-5" aria-hidden="true" />
+          </div>
+          <div className="min-w-0">
+            <h2 className="font-semibold text-gray-900 dark:text-gray-100">
+              {project.name}
+            </h2>
+            <p className="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">
+              {project.path}
+            </p>
+          </div>
         </div>
-        <div className="min-w-0">
-          <h2 className="font-semibold text-gray-900 dark:text-gray-100">
-            {project.name}
-          </h2>
-          <p className="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">
-            {project.path}
-          </p>
-        </div>
-      </div>
-
-      <form className="mt-5 space-y-4">
-        <input type="hidden" name="projectName" value={project.name} />
-        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_9rem]">
-          <FormField label="Local image">
-            <Input value={localImage} readOnly aria-label="Local image" />
-          </FormField>
-          <FormField label="Zot image">
-            <Input value={zotImage} readOnly aria-label="Zot image" />
-          </FormField>
-          <FormField label="Tag" htmlFor={`tag-${project.name}`}>
-            <Input
-              id={`tag-${project.name}`}
-              name="tag"
-              defaultValue="latest"
-              required
-              pattern="[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}"
-            />
-          </FormField>
-        </div>
-
-        <ActionMessage status={state.status} message={state.message} />
-
-        <div className="flex justify-end gap-2">
+        <form className="flex shrink-0 flex-wrap justify-end gap-2">
+          <input type="hidden" name="projectName" value={project.name} />
+          <input type="hidden" name="tag" value="latest" />
           <Button
             type="submit"
             formAction={buildAction}
-            disabled={buildPending || pushPending || !project.hasDockerfile}
+            disabled={
+              buildPending ||
+              pushPending ||
+              buildPushPending ||
+              jobRunning ||
+              !project.hasDockerfile ||
+              !dockerAvailable
+            }
+            title={dockerAvailable ? "Build image" : "Docker is not available"}
             className="inline-flex items-center gap-1.5"
           >
-            <CubeIcon className="size-4" aria-hidden="true" />
-            {buildPending ? "Building…" : "Build"}
+            {building || buildPending ? (
+              <ArrowPathIcon
+                className="size-4 animate-spin"
+                aria-hidden="true"
+              />
+            ) : (
+              <CubeIcon className="size-4" aria-hidden="true" />
+            )}
+            {building || buildPending ? "Building…" : "Build"}
           </Button>
           <Button
             type="submit"
@@ -132,6 +193,8 @@ export function ProjectImageCard({
             disabled={
               buildPending ||
               pushPending ||
+              buildPushPending ||
+              jobRunning ||
               !project.hasDockerfile ||
               !zotRegistryHost ||
               localImages.length === 0
@@ -144,11 +207,52 @@ export function ProjectImageCard({
             variant="success"
             className="inline-flex items-center gap-1.5"
           >
-            <ArrowUpTrayIcon className="size-4" aria-hidden="true" />
-            {pushPending ? "Pushing…" : "Push"}
+            {pushing || pushPending ? (
+              <ArrowPathIcon
+                className="size-4 animate-spin"
+                aria-hidden="true"
+              />
+            ) : (
+              <ArrowUpTrayIcon className="size-4" aria-hidden="true" />
+            )}
+            {pushing || pushPending ? "Pushing…" : "Push"}
           </Button>
-        </div>
-      </form>
+          <Button
+            type="submit"
+            formAction={buildPushAction}
+            disabled={
+              buildPending ||
+              pushPending ||
+              buildPushPending ||
+              jobRunning ||
+              !project.hasDockerfile ||
+              !dockerAvailable ||
+              !zotRegistryHost
+            }
+            title={
+              zotRegistryHost
+                ? "Build the image and push it to Zot"
+                : "Deploy Zot on the active instance before building and pushing"
+            }
+            variant="success"
+            className="inline-flex items-center gap-1.5"
+          >
+            {buildingAndPushing || buildPushPending ? (
+              <ArrowPathIcon
+                className="size-4 animate-spin"
+                aria-hidden="true"
+              />
+            ) : (
+              <ArrowUpTrayIcon className="size-4" aria-hidden="true" />
+            )}
+            {buildingAndPushing || buildPushPending
+              ? "Building & pushing…"
+              : "Build & push"}
+          </Button>
+        </form>
+      </div>
+
+      <ActionMessage status={state.status} message={state.message} />
 
       <div className="mt-5 grid gap-4 border-t border-gray-200 pt-5 lg:grid-cols-2 dark:border-white/10">
         <ImageList
@@ -170,11 +274,12 @@ export function ProjectImageCard({
         />
         <ImageList
           title="Zot registry versions"
+          headerAction={<RefreshZotButton />}
           projectName={project.name}
           emptyMessage={
             zotRegistryHost
               ? "No published versions yet."
-              : "No Zot registry available."
+              : "Zot registry is not deployed in this instance."
           }
           error={zotImagesError}
           deleteAction={zotDeleteAction}
@@ -183,6 +288,7 @@ export function ProjectImageCard({
           items={zotImages.map((image) => ({
             key: `${image.digest}:${image.tag}`,
             name: `${image.name}:${image.tag}`,
+            href: `https://${zotRegistryHost}`,
             tag: image.tag,
             identifier: image.digest,
             date: image.publishedAt,
@@ -202,6 +308,7 @@ export function ProjectImageCard({
 
 function ImageList({
   title,
+  headerAction,
   projectName,
   items,
   emptyMessage,
@@ -211,6 +318,7 @@ function ImageList({
   deleteState,
 }: {
   title: string;
+  headerAction?: React.ReactNode;
   projectName: string;
   items: Array<{
     key: string;
@@ -219,6 +327,7 @@ function ImageList({
     identifier: string;
     date: string;
     label?: string;
+    href?: string;
   }>;
   emptyMessage: string;
   error: string;
@@ -228,13 +337,18 @@ function ImageList({
 }) {
   return (
     <section>
-      <h3 className="text-xs font-semibold text-gray-900 dark:text-gray-100">
-        {title}
-      </h3>
-      <ActionMessage
-        status={deleteState.status}
-        message={deleteState.message}
-      />
+      <div className="flex min-h-7 items-center justify-between gap-2">
+        <h3 className="text-xs font-semibold text-gray-900 dark:text-gray-100">
+          {title}
+        </h3>
+        {headerAction}
+      </div>
+      {deleteState.status === "error" && (
+        <ActionMessage
+          status={deleteState.status}
+          message={deleteState.message}
+        />
+      )}
       {error ? (
         <p className="mt-2 text-xs text-red-600 dark:text-red-400">{error}</p>
       ) : items.length === 0 ? (
@@ -246,9 +360,25 @@ function ImageList({
           {items.map((item) => (
             <li key={item.key} className="flex items-center gap-3 px-3 py-2.5">
               <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-medium text-gray-900 dark:text-gray-100">
-                  {item.name}
-                </p>
+                {item.href ? (
+                  <a
+                    href={item.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex max-w-full items-center gap-1 text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-300"
+                    title={`Open ${item.name} in Zot`}
+                  >
+                    <span className="truncate">{item.name}</span>
+                    <ArrowTopRightOnSquareIcon
+                      className="size-3.5 shrink-0"
+                      aria-hidden="true"
+                    />
+                  </a>
+                ) : (
+                  <p className="truncate text-xs font-medium text-gray-900 dark:text-gray-100">
+                    {item.name}
+                  </p>
+                )}
                 <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
                   {formatImageDate(item.date)}
                 </p>

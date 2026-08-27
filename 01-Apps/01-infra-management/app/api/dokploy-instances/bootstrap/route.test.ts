@@ -6,10 +6,15 @@ vi.mock("@/auth", () => ({ authOptions: {} }));
 vi.mock("@/lib/dokploy/bootstrap-zot", () => ({
   deployDokployZotRegistry: vi.fn(),
   ensureDokployMainProject: vi.fn(),
+  inspectDokployBootstrapResources: vi.fn(),
 }));
 vi.mock("@/lib/storage/dokploy-instances", () => ({
   updateDokployInstance: vi.fn(),
 }));
+vi.mock("@/lib/dokploy/sidebar-project-snapshot", () => ({
+  refreshSidebarProjectSnapshot: vi.fn(),
+}));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/vps/bootstrap-dokploy", () => ({
   runDokployBootstrapStep: vi.fn(),
 }));
@@ -23,11 +28,16 @@ vi.mock("@/lib/storage/dokploy-provisioning", () => ({
 
 import { getServerSession } from "next-auth";
 import { ensureDokployMainProject } from "@/lib/dokploy/bootstrap-zot";
+import { inspectDokployBootstrapResources } from "@/lib/dokploy/bootstrap-zot";
 import {
   beginDokployProvisioningStep,
   completeDokployProvisioningStep,
   getDokployProvisioningJob,
+  updateDokployProvisioningJob,
 } from "@/lib/storage/dokploy-provisioning";
+import { runDokployBootstrapStep } from "@/lib/vps/bootstrap-dokploy";
+import { refreshSidebarProjectSnapshot } from "@/lib/dokploy/sidebar-project-snapshot";
+import { revalidatePath } from "next/cache";
 import { POST } from "./route";
 
 function request(step = "updating") {
@@ -41,6 +51,21 @@ function request(step = "updating") {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(getServerSession).mockResolvedValue({ user: { name: "admin" } });
+  vi.mocked(refreshSidebarProjectSnapshot).mockResolvedValue({
+    projects: [
+      {
+        projectId: "main-1",
+        name: "Main",
+        description: "",
+        env: "",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        environments: [],
+      },
+    ],
+    updatedAt: Date.now(),
+    refreshing: false,
+    error: "",
+  });
 });
 
 describe("provisioning step route", () => {
@@ -97,6 +122,63 @@ describe("provisioning step route", () => {
     expect(completeDokployProvisioningStep).toHaveBeenCalledWith(
       "job-1",
       "main-project",
+    );
+    expect(refreshSidebarProjectSnapshot).toHaveBeenCalledWith("instance-1");
+    expect(revalidatePath).toHaveBeenCalledWith("/", "layout");
+  });
+
+  it("auto-completes existing Main and Zot steps after API key creation", async () => {
+    const runningJob = dokployProvisioningJob({
+      apiKey: "",
+      steps: {
+        updating: "done",
+        installing: "done",
+        administrator: "done",
+        domain: "done",
+        "api-key": "running",
+      },
+      status: "running",
+    });
+    const keyedJob = dokployProvisioningJob({
+      apiKey: "generated-key",
+      steps: { ...runningJob.steps, "api-key": "done" },
+      status: "running",
+    });
+    vi.mocked(beginDokployProvisioningStep).mockReturnValue({
+      status: "started",
+      job: runningJob,
+    });
+    vi.mocked(runDokployBootstrapStep).mockImplementation(
+      async (_input, _progress, _log, onApiKey) => {
+        await onApiKey?.("generated-key");
+        return {
+          apiKey: "generated-key",
+          rootUrl: "https://dockploy.example.com",
+          setupUrl: "http://203.0.113.10:3000",
+        };
+      },
+    );
+    vi.mocked(getDokployProvisioningJob).mockReturnValue(keyedJob);
+    vi.mocked(inspectDokployBootstrapResources).mockResolvedValue({
+      mainProjectExists: true,
+      zotExists: true,
+    });
+    vi.mocked(completeDokployProvisioningStep).mockReturnValue(
+      dokployProvisioningJob({ status: "complete" }),
+    );
+
+    expect((await POST(request("api-key"))).status).toBe(200);
+    expect(inspectDokployBootstrapResources).toHaveBeenCalledWith({
+      baseUrl: "http://203.0.113.10:3000",
+      apiKey: "generated-key",
+    });
+    expect(updateDokployProvisioningJob).toHaveBeenCalledWith(
+      "job-1",
+      expect.objectContaining({ step: "main-project", stepStatus: "done" }),
+    );
+    expect(updateDokployProvisioningJob).toHaveBeenCalledWith(
+      "job-1",
+      expect.objectContaining({ step: "zot", stepStatus: "done" }),
     );
   });
 });

@@ -1,25 +1,43 @@
 import { notFound } from "next/navigation";
 
-import { listLocalDockerImages } from "@/lib/docker/local-image-builder";
+import {
+  isDockerDaemonUnavailableError,
+  listLocalDockerImages,
+} from "@/lib/docker/local-image-builder";
 import { getRepositoryProjects } from "@/lib/repository-projects";
+import {
+  areProjectBuildsEnabled,
+  ensureRepositoryCheckout,
+} from "@/lib/repository-workspace";
+import { listImageJobs } from "@/lib/docker/image-jobs";
+import { getActiveDokployInstanceSummary } from "@/lib/dokploy";
 import { getActiveZotRegistry } from "@/lib/zot/active-registry";
 import { getZotRegistryImages } from "@/lib/zot/registry-images";
 
 import { ProjectImageCard } from "./_components/project-image-card";
+import { RefreshProjectsButton } from "./_components/refresh-projects-button";
 
 export default async function ProjectsPage() {
-  if (process.env.NODE_ENV !== "development") notFound();
+  if (!areProjectBuildsEnabled()) notFound();
+  await ensureRepositoryCheckout();
 
-  const [projects, zotRegistry] = await Promise.all([
+  const [projects, zotRegistry, activeInstance] = await Promise.all([
     getRepositoryProjects(),
     getActiveZotRegistry().catch(() => null),
+    getActiveDokployInstanceSummary(),
   ]);
+  const jobs = listImageJobs();
   const projectInventories = await Promise.all(
     projects.map(async (project) => {
       const [localResult, zotResult] = await Promise.all([
         listLocalDockerImages(project.imageRepository).then(
           (images) => ({ images, error: "" }),
-          () => ({ images: [], error: "Unable to load local Docker images." }),
+          (error) => ({
+            images: [],
+            error: isDockerDaemonUnavailableError(error)
+              ? "Docker is not running."
+              : "Unable to load local Docker images.",
+          }),
         ),
         zotRegistry
           ? getZotRegistryImages(zotRegistry, project.imageRepository).then(
@@ -36,15 +54,18 @@ export default async function ProjectsPage() {
   );
 
   return (
-    <div>
-      <div>
-        <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-          Projects
-        </h1>
-        <p className="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400">
-          Build production images from local 01-Apps projects, then push them to
-          the Zot registry on the active Dokploy instance.
-        </p>
+    <div key={activeInstance?.id ?? "no-active-instance"}>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+            Projects
+          </h1>
+          <p className="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400">
+            Build production images from local 01-Apps projects, then push them
+            to the Zot registry on the active Dokploy instance.
+          </p>
+        </div>
+        <RefreshProjectsButton />
       </div>
 
       {!zotRegistry && (
@@ -62,8 +83,12 @@ export default async function ProjectsPage() {
             zotRegistryHost={zotRegistry?.host ?? ""}
             localImages={localResult.images}
             localImagesError={localResult.error}
+            dockerAvailable={!localResult.error}
             zotImages={zotResult.images}
             zotImagesError={zotResult.error}
+            initialJob={
+              jobs.find((job) => job.projectName === project.name) ?? null
+            }
           />
         ))}
       </div>
