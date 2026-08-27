@@ -125,6 +125,8 @@ export function ProjectImageCard({
   const building = jobRunning && currentJob.type === "build";
   const pushing = jobRunning && currentJob.type === "push";
   const buildingAndPushing = jobRunning && currentJob.type === "build-push";
+  const imageActionPending =
+    buildPending || pushPending || buildPushPending || jobRunning;
 
   useEffect(() => {
     if (
@@ -167,12 +169,7 @@ export function ProjectImageCard({
             type="submit"
             formAction={buildAction}
             disabled={
-              buildPending ||
-              pushPending ||
-              buildPushPending ||
-              jobRunning ||
-              !project.hasDockerfile ||
-              !dockerAvailable
+              imageActionPending || !project.hasDockerfile || !dockerAvailable
             }
             title={dockerAvailable ? "Build image" : "Docker is not available"}
             className="inline-flex items-center gap-1.5"
@@ -191,10 +188,7 @@ export function ProjectImageCard({
             type="submit"
             formAction={pushAction}
             disabled={
-              buildPending ||
-              pushPending ||
-              buildPushPending ||
-              jobRunning ||
+              imageActionPending ||
               !project.hasDockerfile ||
               !zotRegistryHost ||
               localImages.length === 0
@@ -221,10 +215,7 @@ export function ProjectImageCard({
             type="submit"
             formAction={buildPushAction}
             disabled={
-              buildPending ||
-              pushPending ||
-              buildPushPending ||
-              jobRunning ||
+              imageActionPending ||
               !project.hasDockerfile ||
               !dockerAvailable ||
               !zotRegistryHost

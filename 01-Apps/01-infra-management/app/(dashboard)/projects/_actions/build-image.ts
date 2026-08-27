@@ -25,7 +25,10 @@ import {
   ensureRepositoryCheckout,
   refreshRepositoryCheckout,
 } from "@/lib/repository-workspace";
-import { getActiveZotRegistry } from "@/lib/zot/active-registry";
+import {
+  getActiveZotRegistry,
+  type ActiveZotRegistry,
+} from "@/lib/zot/active-registry";
 import {
   deleteZotRegistryImage,
   getZotRegistryImages,
@@ -37,6 +40,14 @@ export type BuildImageState = {
   message: string;
   image?: string;
   job?: ImageJob;
+};
+
+type ImageRequest = {
+  image: string;
+  projectName: string;
+  projectDirectory: string;
+  repository: string;
+  tag: string;
 };
 
 export async function refreshZotRegistryAction(): Promise<BuildImageState> {
@@ -78,16 +89,7 @@ export async function refreshProjectSourceAction(): Promise<BuildImageState> {
 async function getImageRequest(
   formData: FormData,
   options: { requireDockerfile?: boolean } = {},
-): Promise<
-  | { error: BuildImageState }
-  | {
-      image: string;
-      projectName: string;
-      projectDirectory: string;
-      repository: string;
-      tag: string;
-    }
-> {
+): Promise<{ error: BuildImageState } | ImageRequest> {
   if (!areProjectBuildsEnabled()) {
     return {
       error: { status: "error", message: "Local image builds are disabled." },
@@ -133,6 +135,45 @@ async function getImageRequest(
     repository: project.imageRepository,
     tag,
   };
+}
+
+async function buildRequestedImage(request: ImageRequest) {
+  const retainedVersion =
+    request.tag === "latest"
+      ? await tagDockerImageVersion(request.repository, request.tag).catch(
+          () => "",
+        )
+      : "";
+  const result = await buildDockerImage({
+    projectDirectory: request.projectDirectory,
+    image: request.image,
+  });
+  return { image: result.image, retainedVersion };
+}
+
+async function pushRequestedImage(
+  request: ImageRequest,
+  registry: ActiveZotRegistry,
+  previousVersions: Awaited<ReturnType<typeof listLocalDockerImages>> = [],
+) {
+  for (const version of previousVersions.filter((image) => !image.current)) {
+    await pushDockerImage({
+      localImage: `${version.name}:${version.tag}`,
+      registryImage: `${registry.host}/${version.name}:${version.tag}`,
+      registryHost: registry.host,
+      username: registry.username,
+      password: registry.password,
+    });
+  }
+  const result = await pushDockerImage({
+    localImage: request.image,
+    registryImage: `${registry.host}/${request.image}`,
+    registryHost: registry.host,
+    username: registry.username,
+    password: registry.password,
+  });
+  invalidateZotRegistryMemoryState(registry.host);
+  return result;
 }
 
 export async function deleteLocalProjectImageAction(
@@ -207,21 +248,11 @@ export async function buildProjectImageAction(
 
   const job = startImageJob(request.projectName, "build", async () => {
     try {
-      let retainedVersion = "";
-      if (request.tag === "latest") {
-        retainedVersion = await tagDockerImageVersion(
-          request.repository,
-          request.tag,
-        ).catch(() => "");
-      }
-      const result = await buildDockerImage({
-        projectDirectory: request.projectDirectory,
-        image: request.image,
-      });
+      const result = await buildRequestedImage(request);
       return {
         status: "success" as const,
-        message: retainedVersion
-          ? `Built ${result.image}; the previous image remains as ${retainedVersion}.`
+        message: result.retainedVersion
+          ? `Built ${result.image}; the previous image remains as ${result.retainedVersion}.`
           : `Built ${result.image}.`,
       };
     } catch {
@@ -243,15 +274,7 @@ export async function buildAndPushProjectImageAction(
 
   const job = startImageJob(request.projectName, "build-push", async () => {
     try {
-      if (request.tag === "latest") {
-        await tagDockerImageVersion(request.repository, request.tag).catch(
-          () => "",
-        );
-      }
-      await buildDockerImage({
-        projectDirectory: request.projectDirectory,
-        image: request.image,
-      });
+      await buildRequestedImage(request);
 
       const registry = await getActiveZotRegistry();
       if (!registry) {
@@ -261,14 +284,7 @@ export async function buildAndPushProjectImageAction(
             "The image was built, but no active Zot registry is available.",
         };
       }
-      const result = await pushDockerImage({
-        localImage: request.image,
-        registryImage: `${registry.host}/${request.image}`,
-        registryHost: registry.host,
-        username: registry.username,
-        password: registry.password,
-      });
-      invalidateZotRegistryMemoryState(registry.host);
+      const result = await pushRequestedImage(request, registry);
       return {
         status: "success" as const,
         message: `Built and pushed ${result.image}.`,
@@ -307,23 +323,7 @@ export async function pushProjectImageAction(
             "Create and deploy a Zot service with an enabled domain on the active Dokploy instance before pushing.",
         };
       }
-      for (const version of localVersions.filter((image) => !image.current)) {
-        await pushDockerImage({
-          localImage: `${version.name}:${version.tag}`,
-          registryImage: `${registry.host}/${version.name}:${version.tag}`,
-          registryHost: registry.host,
-          username: registry.username,
-          password: registry.password,
-        });
-      }
-      const result = await pushDockerImage({
-        localImage: request.image,
-        registryImage: `${registry.host}/${request.image}`,
-        registryHost: registry.host,
-        username: registry.username,
-        password: registry.password,
-      });
-      invalidateZotRegistryMemoryState(registry.host);
+      const result = await pushRequestedImage(request, registry, localVersions);
       return {
         status: "success" as const,
         message: `Pushed ${result.image}.`,
