@@ -13,10 +13,10 @@ The audit will cover duplication **within each application**. It will also compa
 
 ## Safety and success rules
 
-- Begin from the verified clean commit on `main`; keep each audit/refactoring batch isolated and reviewable so any new working-tree change has a clear origin.
+- Keep each audit and refactoring batch isolated and reviewable so every change has a clear origin.
 - Establish a passing baseline before refactoring. Record existing failures separately so they are not mistaken for regressions.
 - Treat compiler/linter output and import analysis as leads, not proof. Remove code only after checking static imports, dynamic imports, framework conventions, configuration references, scripts, tests, assets, and runtime entry points.
-- Refactor in small, reviewable batches, keeping behavior changes out of structural commits.
+- Refactor in small, reviewable batches, keeping behavior changes separate from structural changes.
 - Prefer ownership-based modules and clear public entry points over generic `utils`, `helpers`, or oversized shared folders.
 - Do not extract code merely because it looks similar. Consolidate only when the copies have the same responsibility and are expected to evolve together.
 - Respect each app's `AGENTS.md`, framework conventions, security boundaries, and generated/upgrade-managed files.
@@ -37,8 +37,6 @@ The audit will cover duplication **within each application**. It will also compa
 
 ## Phase 1 — Baseline and repository map
 
-- [x] Verify the starting working tree is clean and all previous work is committed (`main`, verified before the audit begins).
-- [x] Record starting commit `e96ec0679f2e4c6046ae689da5553021f84cb70d` so all audit and refactoring changes can be compared against an exact baseline.
 - [ ] Read the four app guides, READMEs, architecture documents, TypeScript/ESLint configuration, package scripts, Docker files, workspace configuration, and upgrade metadata.
 - [ ] For both Next.js codebases, consult the installed Next.js documentation for any routing, server/client boundary, caching, middleware/proxy, and file-convention behavior relevant to a proposed change.
 - [ ] Inventory source files, tests, scripts, static assets, generated files, environment/config references, and runtime entry points while excluding `node_modules`, `.next`, `dist`, coverage, and other generated output.
@@ -116,7 +114,7 @@ The audit will cover duplication **within each application**. It will also compa
 ## Phase 7 — Final review and handoff
 
 - [ ] Re-run duplicate and unused-code scans to confirm the intended reduction and detect newly orphaned code.
-- [ ] Review the final diff for accidental behavior changes, generated artifacts, secrets, broad formatting churn, and overlap with the user's pre-existing work.
+- [ ] Review all final changes for accidental behavior changes, generated artifacts, secrets, and broad formatting churn.
 - [ ] Confirm documentation, architecture notes, and storefront upgrade notes match the resulting structure.
 - [ ] Produce per-app metrics: files/lines/dependencies removed, duplicate groups consolidated, tests added or changed, and remaining deferred findings.
 - [ ] Provide a concise final report containing validation results, known limitations, and prioritized next steps.
