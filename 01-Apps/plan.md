@@ -13,7 +13,7 @@ The audit will cover duplication **within each application**. It will also compa
 
 ## Safety and success rules
 
-- Preserve all pre-existing working-tree changes; do not overwrite, revert, or mix them with unrelated cleanup.
+- Begin from the verified clean commit on `main`; keep each audit/refactoring batch isolated and reviewable so any new working-tree change has a clear origin.
 - Establish a passing baseline before refactoring. Record existing failures separately so they are not mistaken for regressions.
 - Treat compiler/linter output and import analysis as leads, not proof. Remove code only after checking static imports, dynamic imports, framework conventions, configuration references, scripts, tests, assets, and runtime entry points.
 - Refactor in small, reviewable batches, keeping behavior changes out of structural commits.
@@ -37,7 +37,8 @@ The audit will cover duplication **within each application**. It will also compa
 
 ## Phase 1 — Baseline and repository map
 
-- [ ] Capture `git status` and classify existing modifications/untracked files by app before touching code.
+- [x] Verify the starting working tree is clean and all previous work is committed (`main`, verified before the audit begins).
+- [x] Record starting commit `e96ec0679f2e4c6046ae689da5553021f84cb70d` so all audit and refactoring changes can be compared against an exact baseline.
 - [ ] Read the four app guides, READMEs, architecture documents, TypeScript/ESLint configuration, package scripts, Docker files, workspace configuration, and upgrade metadata.
 - [ ] For both Next.js codebases, consult the installed Next.js documentation for any routing, server/client boundary, caching, middleware/proxy, and file-convention behavior relevant to a proposed change.
 - [ ] Inventory source files, tests, scripts, static assets, generated files, environment/config references, and runtime entry points while excluding `node_modules`, `.next`, `dist`, coverage, and other generated output.
