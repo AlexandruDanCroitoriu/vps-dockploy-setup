@@ -51,6 +51,7 @@ export type LocalDockerImage = {
   imageId: string;
   createdAt: string;
   current: boolean;
+  digests: string[];
 };
 
 export function isValidDockerTag(value: string) {
@@ -106,7 +107,10 @@ export async function listLocalDockerImages(
 
   const rows = output
     .split("\n")
-    .flatMap((line): Array<Omit<LocalDockerImage, "createdAt" | "current">> => {
+    .flatMap(
+      (line): Array<
+        Omit<LocalDockerImage, "createdAt" | "current" | "digests">
+      > => {
       try {
         const value = JSON.parse(line) as Record<string, unknown>;
         const name =
@@ -117,7 +121,8 @@ export async function listLocalDockerImages(
       } catch {
         return [];
       }
-    });
+      },
+    );
   const imageIds = [...new Set(rows.map((row) => row.imageId))];
   if (imageIds.length === 0) return [];
   const inspectOutput = await runDocker([
@@ -128,11 +133,20 @@ export async function listLocalDockerImages(
     ...imageIds,
   ]);
   const createdById = new Map<string, string>();
+  const digestsById = new Map<string, string[]>();
   for (const line of inspectOutput.split("\n")) {
     try {
       const value = JSON.parse(line) as Record<string, unknown>;
       if (typeof value.Id === "string" && typeof value.Created === "string") {
         createdById.set(value.Id, value.Created);
+        const repoDigests = Array.isArray(value.RepoDigests)
+          ? value.RepoDigests.flatMap((digest) => {
+              if (typeof digest !== "string") return [];
+              const separator = digest.lastIndexOf("@");
+              return separator >= 0 ? [digest.slice(separator + 1)] : [];
+            })
+          : [];
+        digestsById.set(value.Id, [...new Set(repoDigests)]);
       }
     } catch {
       // Ignore malformed Docker output and retain an empty date.
@@ -144,6 +158,7 @@ export async function listLocalDockerImages(
       ...row,
       createdAt: createdById.get(row.imageId) ?? "",
       current: false,
+      digests: digestsById.get(row.imageId) ?? [],
     })),
   );
 }

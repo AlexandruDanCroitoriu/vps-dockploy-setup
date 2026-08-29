@@ -16,6 +16,8 @@ import {
   getRepositoryApplicationsResult,
 } from "@/lib/github/repository-applications";
 import { getInfraManagementZotImage } from "@/lib/zot/infra-management-image";
+import { getVendureBackendZotImage } from "@/lib/zot/vendure-backend-image";
+import { getVendureStorefrontZotImage } from "@/lib/zot/vendure-storefront-image";
 
 import { ProjectCard } from "../_components/project/project-card";
 import { ReloadButton } from "../_components/reload-button";
@@ -45,6 +47,9 @@ async function ProjectContent({
     repositoryApplications,
     activeInstance,
     infraManagementImage,
+    vendureBackendImage,
+    storefrontImage,
+    storefrontCleanImage,
   ] = await Promise.all([
     getActiveDokployProjectFromSnapshot(projectId),
     getActiveDokployProjectSnapshot(),
@@ -52,6 +57,13 @@ async function ProjectContent({
     getRepositoryApplicationsResult(),
     getActiveDokployConfiguration(),
     getInfraManagementZotImage(),
+    getVendureBackendZotImage(),
+    getVendureStorefrontZotImage(
+      "/01-Apps/02-Online-Store-Vendure/apps/storefront",
+    ),
+    getVendureStorefrontZotImage(
+      "/01-Apps/02-Online-Store-Vendure/apps/storefront-clean",
+    ),
   ]);
 
   if (!project) notFound();
@@ -81,6 +93,15 @@ async function ProjectContent({
           infraManagementImageAvailability={{
             available: infraManagementImage.available,
             message: infraManagementImage.message,
+          }}
+          vendureBackendImageAvailability={{
+            available: vendureBackendImage.available,
+            message: vendureBackendImage.message,
+          }}
+          vendureStorefrontImageAvailability={{
+            "/01-Apps/02-Online-Store-Vendure/apps/storefront": storefrontImage,
+            "/01-Apps/02-Online-Store-Vendure/apps/storefront-clean":
+              storefrontCleanImage,
           }}
           rootDomain={activeInstance?.rootDomain ?? ""}
           defaultServiceCredentials={{

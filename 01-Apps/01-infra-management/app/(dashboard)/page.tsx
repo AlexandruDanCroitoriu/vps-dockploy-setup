@@ -12,6 +12,8 @@ import {
 } from "@/lib/cloudflare/zones";
 import { inspectDokployBootstrapResources } from "@/lib/dokploy/bootstrap-zot";
 import { reconcileDokployResourceSteps } from "@/lib/storage/dokploy-provisioning";
+import { isResendConfigured } from "@/lib/resend/client";
+import { ResendConfiguration } from "./_components/resend-configuration";
 
 export default async function Home({
   searchParams,
@@ -121,6 +123,7 @@ export default async function Home({
           }}
         />
       </section>
+      {!addingInstance && <ResendConfiguration configured={isResendConfigured()} />}
     </div>
   );
 }

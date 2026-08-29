@@ -1,0 +1,22 @@
+{
+  "Sort": {
+    "nameAsc": "Nume: A–Z",
+    "nameDesc": "Nume: Z–A",
+    "priceAsc": "Preț: crescător",
+    "priceDesc": "Preț: descrescător",
+    "placeholder": "Sortează după"
+  },
+  "Filters": {
+    "title": "Filtre",
+    "clearAll": "Șterge toate",
+    "filtersButton": "Filtre"
+  },
+  "Search": {
+    "title": "Căutare",
+    "pageTitle": "Caută produse",
+    "resultsFor": "Rezultate pentru „{query}”",
+    "resultsTitle": "Rezultate pentru „{query}”",
+    "metaDescription": "Găsește produse care corespund căutării „{query}” pe {siteName}",
+    "metaCatalogDescription": "Caută în catalogul de produse {siteName}"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "Navigation": {
+    "openMenu": "Deschide meniul",
+    "menu": "Meniu",
+    "searchProducts": "Caută produse...",
+    "shopAll": "Toate produsele",
+    "collections": "Colecții",
+    "account": "Cont",
+    "profile": "Profil",
+    "orders": "Comenzi",
+    "addresses": "Adrese",
+    "signIn": "Autentificare",
+    "signOut": "Deconectare",
+    "greeting": "Salut, {name}",
+    "shoppingCart": "Coș de cumpărături",
+    "switchLanguage": "Schimbă limba",
+    "switchCurrency": "Schimbă moneda"
+  }
+}

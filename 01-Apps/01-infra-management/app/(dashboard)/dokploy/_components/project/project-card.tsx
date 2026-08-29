@@ -3,8 +3,6 @@ import Link from "next/link";
 import { Suspense } from "react";
 
 import {
-  getServiceTypeLabel,
-  isDatabaseService,
   shouldPollDokployServiceStatus,
   type DokployProject,
   type DokployGithubProvider,
@@ -42,6 +40,8 @@ export function ProjectCard({
   repositoryApplications,
   repositoryApplicationsError,
   infraManagementImageAvailability,
+  vendureBackendImageAvailability,
+  vendureStorefrontImageAvailability,
   rootDomain,
   defaultServiceCredentials,
   dokployRootUrl = "",
@@ -59,6 +59,11 @@ export function ProjectCard({
     available: boolean;
     message: string;
   };
+  vendureBackendImageAvailability?: { available: boolean; message: string };
+  vendureStorefrontImageAvailability?: Record<
+    string,
+    { available: boolean; message: string }
+  >;
   rootDomain: string;
   defaultServiceCredentials: { username: string; password: string };
   dokployRootUrl?: string;
@@ -72,6 +77,15 @@ export function ProjectCard({
     })),
   );
   const serviceCount = services.length;
+  const vendureBackendDeployment = services
+    .map(({ service }) => service)
+    .find(
+      (service) =>
+        service.type === "applications" &&
+        (service.name.toLowerCase() === "vendure" ||
+          service.sourcePath?.toLowerCase() ===
+            "/01-apps/02-online-store-vendure/apps/server"),
+    );
 
   return (
     <article className="relative overflow-visible rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-gray-800/40">
@@ -133,10 +147,29 @@ export function ProjectCard({
                     message: "Unable to verify infra-management:latest in Zot.",
                   }
                 }
+                vendureBackendImageAvailability={
+                  vendureBackendImageAvailability ?? {
+                    available: false,
+                    message:
+                      "Unable to verify online-store-vendure-server:latest in Zot.",
+                  }
+                }
+                vendureStorefrontImageAvailability={
+                  vendureStorefrontImageAvailability ?? {}
+                }
                 rootDomain={rootDomain}
                 deployedApplications={
                   deployedRepositoryApplications ??
                   getRepositoryApplicationDeployments([project])
+                }
+                vendureBackendDeployment={
+                  vendureBackendDeployment
+                    ? {
+                        id: vendureBackendDeployment.id,
+                        name: vendureBackendDeployment.name,
+                        sourcePath: vendureBackendDeployment.sourcePath,
+                      }
+                    : undefined
                 }
               />
             )}
@@ -158,6 +191,7 @@ export function ProjectCard({
             <ServiceTemplateDropdown
               projectId={project.projectId}
               environmentExists={project.environments.length > 0}
+              rootDomain={rootDomain}
               services={services.map(({ service }) => ({
                 type: service.type,
                 name: service.name,
@@ -218,8 +252,6 @@ export function ProjectCard({
 }
 
 function ServiceCardLoading({ service }: { service: DokployService }) {
-  const isDatabase = isDatabaseService(service.type);
-
   return (
     <li className="flex min-w-0 items-center gap-2.5 rounded-md border border-gray-200 bg-white px-3 py-2.5 dark:border-white/10 dark:bg-gray-900/50">
       <CubeIcon className="size-4 shrink-0 text-indigo-500" />
@@ -230,11 +262,6 @@ function ServiceCardLoading({ service }: { service: DokployService }) {
             {getServiceDisplayName(service)}
           </p>
         </div>
-        <p className="truncate text-xs text-gray-500 dark:text-gray-400">
-          {isDatabase
-            ? "Checking status…"
-            : `${getServiceTypeLabel(service.type)} · Checking status…`}
-        </p>
       </div>
       <span className="size-7 shrink-0 animate-pulse rounded-md bg-gray-100 dark:bg-white/5" />
     </li>

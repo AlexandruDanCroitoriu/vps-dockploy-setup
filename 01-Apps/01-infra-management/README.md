@@ -32,6 +32,9 @@ Copy `.env.example` to `.env.local` for local development and configure:
 - `CLOUDFLARE_API_TOKEN`: server-only Cloudflare API token with `Zone:Read` and
   `DNS:Write` permissions, used to manage accessible domains and subdomains on
   the Cloudflare page
+- `RESEND_API_KEY`: server-only full-access Resend key used to provision each
+  active instance domain. The key is never copied to Dokploy projects; Infra
+  Management creates a restricted sending key for each Vendure project instead.
 
 Dockploy root domains, API/CLI keys, and default service login credentials are
 configured from the authenticated Dashboard. The selected instance's values
@@ -54,6 +57,37 @@ when they should appear in the dropdown. Each manifest application can be
 deployed only once per Dockploy instance, regardless of which project contains
 it. Applications backed by a Zot image remain unavailable until their required
 `latest` image can be verified in the active instance's registry.
+
+The Vendure repository entry is a dependent application group. Deploy its
+backend first from `online-store-vendure-server:latest` in the active
+instance's Zot registry. It is created as `vendure` on port 3000 with
+`vendure.<root-domain>` as its default hostname, inherits database and storage
+variables from the Dockploy project environment, and receives generated cookie
+settings plus the active instance's default service username and password as
+its superadmin credentials.
+Creating Garage initializes a `vendure-assets` bucket and dedicated access key,
+then adds `ASSET_URL_PREFIX`, `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`,
+`S3_ACCESS_KEY_ID`, and `S3_SECRET_ACCESS_KEY` to that project environment.
+Deleting the last Garage service removes those managed values. Vendure backend
+creation copies all six storage values from the project into its service
+environment.
+Once the backend has a domain and is running, the storefront entries become
+available when their matching `latest` image is also present in Zot. Storefronts
+are created from `online-store-vendure-storefront:latest` or
+`online-store-vendure-storefront-clean:latest`, use port 3000, and default to the
+folder hostname (`storefront.<root-domain>` or
+`storefront-clean.<root-domain>`). Infra Management signs in to the backend's
+Admin API server-side, loads its channels, and configures each storefront with
+the selected channel token and Shop API URL. The superadmin credentials are
+never returned to the browser.
+
+The project service-template menu also provides a **Complete Vendure stack**
+option. One confirmation creates and starts PostgreSQL, Garage with its WebUI,
+the Vendure backend, `storefront-clean`, and `storefront` in dependency order.
+It generates a shared default channel token before startup, so both storefronts
+can be configured without waiting for the backend Admin API. Redis is not part
+of this stack because the backend uses Vendure's PostgreSQL-backed default job
+queue.
 
 Generate the authentication secret with `openssl rand -base64 32`. Keep `AUTH_SECRET` unchanged between deployments; rotating it signs out the current session.
 
@@ -84,11 +118,10 @@ and update it with the **Refresh projects** button.
 2. Start the dashboard with `npm run dev`, open `Projects`, choose an image tag,
    select `Build`, and then select `Push` when the build succeeds.
 
-Each project card lists locally built Docker tags and their creation dates next
-to the Zot repository's published tags. The newest Zot tag is marked current;
-older tags are shown as previous versions. Individual local and Zot tags can be
-deleted from their respective lists. Deleting the current image requires an
-explicit confirmation; previous versions are removed immediately.
+Each project card lists locally built Docker tags and their creation dates.
+Every build has a push button for each configured instance with an available
+Zot registry. Local tags can be deleted from the build list; deleting the
+current image requires explicit confirmation.
 
 Build and push operations run as process-local background jobs, so navigation
 does not interrupt them. Returning to Projects restores their running or final
@@ -107,6 +140,14 @@ immutable `build-<UTC timestamp>` tag. The new image is tagged only as `latest`.
 Pushing publishes older local builds under their immutable tags before updating
 Zot's single `latest` tag, so each inventory contains one current image plus
 versions retained from earlier builds or pushes.
+
+Projects with component Dockerfiles under `apps/*/Dockerfile` expose one image
+target per component on the Projects page. The Vendure repository exposes
+one `server` backend target plus `storefront` and `storefront-clean` targets;
+future storefront directories with their own Dockerfile are discovered
+automatically. The Vendure backend runs its server and worker together in the
+same Dockploy application through the repository's `npm start` command
+(`vendure start all`), so it uses one image repository and deploys as one unit.
 
 Local images use `<project-name>:<tag>` and pushed images use
 `<zot-domain>/<project-name>:<tag>`; a leading numeric folder prefix such as
@@ -135,8 +176,8 @@ Infra Management using the repository application picker.
    `AUTH_SECRET`, and `NEXTAUTH_URL`. For a manually
    created deployment, configure every required environment variable yourself.
    The generated environment also forwards the current dashboard's server-only
-   `CLOUDFLARE_API_TOKEN` so Cloudflare management is available in the deployed
-   copy.
+   `CLOUDFLARE_API_TOKEN` and server-only `RESEND_API_KEY` so Cloudflare and
+   Resend domain management are available in the deployed copy.
 4. Expose port `3000`, attach the public domain, and enable HTTPS.
 5. Mount persistent application storage at `/app/data`. The application writes
    `/app/data/infra-management.sqlite` automatically. Without that mount,

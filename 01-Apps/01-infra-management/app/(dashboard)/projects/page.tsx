@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { CubeIcon } from "@heroicons/react/24/outline";
 
 import {
   isDockerDaemonUnavailableError,
@@ -11,7 +12,10 @@ import {
 } from "@/lib/repository-workspace";
 import { listImageJobs } from "@/lib/docker/image-jobs";
 import { getInstanceZotRegistries } from "@/lib/zot/instance-registries";
-import { getFreshZotRegistryImages } from "@/lib/zot/registry-images";
+import {
+  getFreshZotRegistryImages,
+  getZotRegistryImageConfigDigest,
+} from "@/lib/zot/registry-images";
 
 import { ProjectImageCard } from "./_components/project-image-card";
 import { RefreshProjectsButton } from "./_components/refresh-projects-button";
@@ -26,9 +30,9 @@ export default async function ProjectsPage() {
   ]);
   const jobs = listImageJobs();
   const projectInventories = await Promise.all(
-    projects.map(async (project) => {
-      const [localResult, registryResults] = await Promise.all([
-        listLocalDockerImages(project.imageRepository).then(
+    projects.flatMap((project) =>
+      project.imageTargets.map(async (target) => {
+      const localResult = await listLocalDockerImages(target.imageRepository).then(
           (images) => ({ images, error: "" }),
           (error) => ({
             images: [],
@@ -36,29 +40,44 @@ export default async function ProjectsPage() {
               ? "Docker is not running."
               : "Unable to load local Docker images.",
           }),
-        ),
-        Promise.all(
-          instanceRegistries.map(async (target) => ({
-            instanceId: target.instanceId,
-            instanceName: target.instanceName,
-            host: target.registry?.host ?? "",
-            ...(target.registry
+        );
+        const registries = await Promise.all(
+          instanceRegistries.map(async (registryTarget) => ({
+            instanceId: registryTarget.instanceId,
+            instanceName: registryTarget.instanceName,
+            host: registryTarget.registry?.host ?? "",
+            publishedImages: registryTarget.registry
               ? await getFreshZotRegistryImages(
-                  target.registry,
-                  project.imageRepository,
+                  registryTarget.registry,
+                  target.imageRepository,
                 ).then(
-                  (images) => ({ images, error: "" }),
-                  () => ({
-                    images: [],
-                    error: "Unable to load Zot image versions.",
-                  }),
+                  async (images) =>
+                    Promise.all(
+                      images
+                        .filter((image) =>
+                          localResult.images.some(
+                            (localImage) => localImage.tag === image.tag,
+                          ),
+                        )
+                        .map(async (image) => ({
+                          tag: image.tag,
+                          digest: image.digest,
+                          configDigest:
+                            await getZotRegistryImageConfigDigest(
+                              registryTarget.registry!,
+                              target.imageRepository,
+                              image.tag,
+                            ),
+                        })),
+                    ),
+                  () => [],
                 )
-              : { images: [], error: "" }),
+              : [],
           })),
-        ),
-      ]);
-      return { project, localResult, registryResults };
-    }),
+        );
+        return { project, target, localResult, registries };
+      }),
+    ),
   );
 
   return (
@@ -83,20 +102,59 @@ export default async function ProjectsPage() {
         </div>
       )}
 
-      <div className="mt-5 grid gap-4 xl:grid-cols-2">
-        {projectInventories.map(({ project, localResult, registryResults }) => (
-          <ProjectImageCard
-            key={project.name}
-            project={project}
-            registries={registryResults}
-            localImages={localResult.images}
-            localImagesError={localResult.error}
-            dockerAvailable={!localResult.error}
-            initialJob={
-              jobs.find((job) => job.projectName === project.name) ?? null
-            }
-          />
-        ))}
+      <div className="mt-5 grid items-start gap-4 xl:grid-cols-2">
+        {projects.map((project) => {
+          const inventories = projectInventories.filter(
+            (inventory) => inventory.project.name === project.name,
+          );
+          const cards = inventories.map(
+            ({ target, localResult, registries }) => (
+              <ProjectImageCard
+                key={`${project.name}:${target.id}`}
+                project={project}
+                target={target}
+                registries={registries}
+                localImages={localResult.images}
+                localImagesError={localResult.error}
+                dockerAvailable={!localResult.error}
+                initialJob={
+                  jobs.find(
+                    (job) =>
+                      job.projectName === `${project.name}:${target.id}`,
+                  ) ?? null
+                }
+                embedded={inventories.length > 1}
+              />
+            ),
+          );
+          if (inventories.length <= 1) return cards[0] ?? null;
+          return (
+            <article
+              key={project.name}
+              className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-gray-800/50"
+            >
+              <div className="flex min-w-0 items-center gap-3 border-b border-gray-200 pb-4 dark:border-white/10">
+                <div className="rounded-md bg-indigo-50 p-1.5 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">
+                  <CubeIcon className="size-4" aria-hidden="true" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h2 className="font-semibold text-gray-900 dark:text-gray-100">
+                    {project.name}
+                  </h2>
+                  <p className="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">
+                    {project.path}
+                  </p>
+                </div>
+                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500 dark:bg-white/5 dark:text-gray-400">
+                  {inventories.length} images
+                </span>
+              </div>
+              <div className="ml-1 border-l border-gray-200 dark:border-white/10">
+                {cards}
+              </div>
+            </article>
+          );
+        })}
       </div>
     </div>
   );

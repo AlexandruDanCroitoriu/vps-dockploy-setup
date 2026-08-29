@@ -46,6 +46,7 @@ export type BuildImageState = {
 
 type ImageRequest = {
   image: string;
+  jobKey: string;
   projectName: string;
   projectDirectory: string;
   repository: string;
@@ -91,7 +92,6 @@ export async function refreshProjectSourceAction(): Promise<BuildImageState> {
 
 async function getImageRequest(
   formData: FormData,
-  options: { requireDockerfile?: boolean } = {},
 ): Promise<{ error: BuildImageState } | ImageRequest> {
   if (!areProjectBuildsEnabled()) {
     return {
@@ -107,6 +107,7 @@ async function getImageRequest(
   }
 
   const projectName = String(formData.get("projectName") ?? "");
+  const targetId = String(formData.get("targetId") ?? "default");
   const tag = String(formData.get("tag") ?? "").trim();
   if (!isValidDockerTag(tag)) {
     return {
@@ -119,23 +120,28 @@ async function getImageRequest(
   const project = (await getRepositoryProjects(appsDirectory)).find(
     (candidate) => candidate.name === projectName,
   );
-  if (
-    !project ||
-    (options.requireDockerfile !== false && !project.hasDockerfile)
-  ) {
+  const target = project?.imageTargets.find(
+    (candidate) => candidate.id === targetId,
+  );
+  if (!project || !target || !target.available) {
     return {
       error: {
         status: "error",
-        message: "The selected repository project does not have a Dockerfile.",
+        message: "The selected repository image target does not have a Dockerfile.",
       },
     };
   }
 
   return {
-    image: `${project.imageRepository}:${tag}`,
+    image: `${target.imageRepository}:${tag}`,
+    jobKey: `${project.name}:${target.id}`,
     projectName: project.name,
-    projectDirectory: path.join(appsDirectory, project.name),
-    repository: project.imageRepository,
+    projectDirectory: path.join(
+      appsDirectory,
+      project.name,
+      target.contextPath,
+    ),
+    repository: target.imageRepository,
     tag,
   };
 }
@@ -158,6 +164,7 @@ async function pushRequestedImage(
   request: ImageRequest,
   registry: ActiveZotRegistry,
   previousVersions: Awaited<ReturnType<typeof listLocalDockerImages>> = [],
+  replaceCurrent = true,
 ) {
   for (const version of previousVersions.filter((image) => !image.current)) {
     await pushDockerImage({
@@ -168,7 +175,9 @@ async function pushRequestedImage(
       password: registry.password,
     });
   }
-  await removeCurrentZotRegistryImage(registry, request.repository);
+  if (replaceCurrent) {
+    await removeCurrentZotRegistryImage(registry, request.repository);
+  }
   const result = await pushDockerImage({
     localImage: request.image,
     registryImage: `${registry.host}/${request.image}`,
@@ -180,11 +189,46 @@ async function pushRequestedImage(
   return result;
 }
 
+export async function pushProjectImageToRegistryAction(
+  _previousState: BuildImageState,
+  formData: FormData,
+): Promise<BuildImageState> {
+  const request = await getImageRequest(formData);
+  if ("error" in request) return request.error;
+
+  try {
+    const instanceId = String(formData.get("instanceId") ?? "");
+    const registry = await getInstanceZotRegistry(instanceId);
+    if (!registry) {
+      return {
+        status: "error",
+        message: "The selected instance Zot registry is unavailable.",
+      };
+    }
+    const localImage = (await listLocalDockerImages(request.repository)).find(
+      (image) => image.tag === request.tag,
+    );
+    if (!localImage) {
+      return { status: "error", message: "The selected local image no longer exists." };
+    }
+    await pushRequestedImage(request, registry, [], localImage.current);
+    return {
+      status: "success",
+      message: `Pushed ${request.image} to ${registry.host}.`,
+    };
+  } catch {
+    return {
+      status: "error",
+      message: `Unable to push ${request.image} to the selected Zot registry.`,
+    };
+  }
+}
+
 export async function deleteLocalProjectImageAction(
   _previousState: BuildImageState,
   formData: FormData,
 ): Promise<BuildImageState> {
-  const request = await getImageRequest(formData, { requireDockerfile: false });
+  const request = await getImageRequest(formData);
   if ("error" in request) return request.error;
 
   try {
@@ -205,7 +249,7 @@ export async function deleteZotProjectImageAction(
   _previousState: BuildImageState,
   formData: FormData,
 ): Promise<BuildImageState> {
-  const request = await getImageRequest(formData, { requireDockerfile: false });
+  const request = await getImageRequest(formData);
   if ("error" in request) return request.error;
 
   try {
@@ -251,7 +295,7 @@ export async function buildProjectImageAction(
   const request = await getImageRequest(formData);
   if ("error" in request) return request.error;
 
-  const job = startImageJob(request.projectName, "build", async () => {
+  const job = startImageJob(request.jobKey, "build", async () => {
     try {
       const result = await buildRequestedImage(request);
       return {
@@ -277,7 +321,7 @@ export async function buildAndPushProjectImageAction(
   const request = await getImageRequest(formData);
   if ("error" in request) return request.error;
 
-  const job = startImageJob(request.projectName, "build-push", async () => {
+  const job = startImageJob(request.jobKey, "build-push", async () => {
     try {
       await buildRequestedImage(request);
 
@@ -323,7 +367,7 @@ export async function pushProjectImageToAllRegistriesAction(
   const request = await getImageRequest(formData);
   if ("error" in request) return request.error;
 
-  const job = startImageJob(request.projectName, "push", async () => {
+  const job = startImageJob(request.jobKey, "push", async () => {
     try {
       const localVersions = await listLocalDockerImages(request.repository);
       if (localVersions.length === 0) {

@@ -26,7 +26,7 @@ export type CloudflareDnsRecord = {
   proxied: boolean;
 };
 
-export type CloudflareDnsRecordType = "A" | "AAAA" | "CNAME" | "TXT";
+export type CloudflareDnsRecordType = "A" | "AAAA" | "CNAME" | "TXT" | "MX";
 
 type CloudflareZonesResponse = {
   success?: unknown;
@@ -191,12 +191,14 @@ export async function createCloudflareDnsRecord(input: {
   type: CloudflareDnsRecordType;
   content: string;
   proxied: boolean;
+  priority?: number;
 }) {
   await mutateDnsRecord(input.zoneId, null, "POST", {
     name: input.name,
     type: input.type,
     content: input.content,
     ttl: 1,
+    ...(input.type === "MX" ? { priority: input.priority ?? 10 } : {}),
     proxied:
       input.type === "A" || input.type === "AAAA" || input.type === "CNAME"
         ? input.proxied

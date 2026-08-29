@@ -117,6 +117,35 @@ export function getFreshZotRegistryImages(
   return fetchZotRegistryImages(registry, repository);
 }
 
+export async function getZotRegistryImageConfigDigest(
+  registry: ActiveZotRegistry,
+  repository: string,
+  reference: string,
+) {
+  const repositoryPath = repository
+    .split("/")
+    .map(encodeURIComponent)
+    .join("/");
+  const response = await fetch(
+    `https://${registry.host}/v2/${repositoryPath}/manifests/${encodeURIComponent(reference)}`,
+    {
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${registry.username}:${registry.password}`).toString("base64")}`,
+        Accept: [
+          "application/vnd.oci.image.manifest.v1+json",
+          "application/vnd.docker.distribution.manifest.v2+json",
+        ].join(", "),
+      },
+      cache: "no-store",
+    },
+  );
+  const payload = (await response.json().catch(() => null)) as {
+    config?: { digest?: unknown };
+  } | null;
+  if (!response.ok || typeof payload?.config?.digest !== "string") return "";
+  return payload.config.digest;
+}
+
 async function fetchZotRegistryImages(
   registry: ActiveZotRegistry,
   repository: string,

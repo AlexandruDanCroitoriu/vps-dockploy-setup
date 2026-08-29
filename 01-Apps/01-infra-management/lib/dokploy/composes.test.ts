@@ -118,6 +118,38 @@ describe("raw Compose services", () => {
     });
   });
 
+  it("creates additional domains for services in the Compose stack", async () => {
+    vi.mocked(dokployPost)
+      .mockResolvedValueOnce({ composeId: "compose-garage" })
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined);
+
+    await createDokployRawCompose({
+      name: "Garage with UI",
+      environmentId: "environment-1",
+      composeFile: "services:\n  garage:\n    image: dxflrs/garage:v2.3.0",
+      environmentVariables: "",
+      additionalDomains: [
+        {
+          host: "s3.example.com",
+          serviceName: "garage",
+          port: 3900,
+          https: true,
+        },
+      ],
+    });
+
+    expect(dokployPost).toHaveBeenLastCalledWith("domain.create", {
+      host: "s3.example.com",
+      port: 3900,
+      https: true,
+      certificateType: "letsencrypt",
+      domainType: "compose",
+      composeId: "compose-garage",
+      serviceName: "garage",
+    });
+  });
+
   it("generates and creates a domain for a new Compose service", async () => {
     vi.mocked(dokployPost)
       .mockResolvedValueOnce({

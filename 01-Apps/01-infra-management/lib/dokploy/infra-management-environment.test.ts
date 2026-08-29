@@ -17,7 +17,7 @@ describe("Infra Management deployment environment", () => {
     );
   });
 
-  it("includes the source dashboard Cloudflare token with safe quoting", () => {
+  it("includes source dashboard provider keys with safe quoting", () => {
     expect(
       serializeInfraManagementEnvironment({
         username: "admin@example.com",
@@ -25,6 +25,7 @@ describe("Infra Management deployment environment", () => {
         authSecret: "auth-secret",
         nextAuthUrl: "https://infra.example.com",
         cloudflareApiToken: "placeholder-token/with-special-characters",
+        resendApiKey: "re_management-key",
       }),
     ).toContain(
       'CLOUDFLARE_API_TOKEN="placeholder-token/with-special-characters"',
@@ -36,7 +37,18 @@ describe("Infra Management deployment environment", () => {
         authSecret: "auth-secret",
         nextAuthUrl: "https://infra.example.com",
         cloudflareApiToken: "token",
+        resendApiKey: "re_management-key",
       }),
     ).toContain('PROJECT_BUILDS_ENABLED="true"');
+    expect(
+      serializeInfraManagementEnvironment({
+        username: "admin@example.com",
+        password: "password",
+        authSecret: "auth-secret",
+        nextAuthUrl: "https://infra.example.com",
+        cloudflareApiToken: "token",
+        resendApiKey: "re_management-key",
+      }),
+    ).toContain('RESEND_API_KEY="re_management-key"');
   });
 });

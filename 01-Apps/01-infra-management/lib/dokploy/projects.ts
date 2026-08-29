@@ -1,7 +1,13 @@
 import "server-only";
 
 import { cache } from "react";
-import { dokployGet, dokployGetFresh, dokployPost } from "./client";
+import {
+  dokployGet,
+  dokployGetFresh,
+  dokployGetWithConfiguration,
+  dokployPost,
+  dokployPostWithConfiguration,
+} from "./client";
 import { DokployApiError } from "./errors";
 import { isRecord, normalizeProject } from "./normalizers";
 import type { DokployProject } from "./types";
@@ -43,6 +49,15 @@ export function getFreshDokployProjects() {
   return loadDokployProjects(dokployGetFresh);
 }
 
+export function getDokployProjectsWithConfiguration(configuration: {
+  baseUrl: string;
+  apiKey: string;
+}) {
+  return loadDokployProjects((endpoint) =>
+    dokployGetWithConfiguration(configuration, endpoint),
+  );
+}
+
 async function fetchDokployProject(
   projectId: string,
   get: <T = unknown>(endpoint: string) => Promise<T>,
@@ -77,6 +92,17 @@ export function getFreshDokployProject(projectId: string) {
 
 export async function updateDokployProjectEnv(projectId: string, env: string) {
   await dokployPost("project.update", { projectId, env });
+}
+
+export async function updateDokployProjectEnvWithConfiguration(
+  configuration: { baseUrl: string; apiKey: string },
+  projectId: string,
+  env: string,
+) {
+  await dokployPostWithConfiguration(configuration, "project.update", {
+    projectId,
+    env,
+  });
 }
 
 export function mergeDokployProjectEnv(

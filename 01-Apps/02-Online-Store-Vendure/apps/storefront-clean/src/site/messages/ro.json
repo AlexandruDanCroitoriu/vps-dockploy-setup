@@ -1,0 +1,19 @@
+{
+  "NotFound": {
+    "title": "Pagina nu a fost găsită",
+    "message": "Pagina căutată nu există, a fost mutată sau este indisponibilă temporar.",
+    "goHome": "Înapoi acasă",
+    "browseProducts": "Vezi produsele",
+    "popularCollections": "Colecții populare"
+  },
+  "Footer": {
+    "description": "Un magazin online modern, rapid și flexibil, construit cu Vendure și Next.js.",
+    "categories": "Colecții",
+    "customer": "Clienți",
+    "shopAll": "Toate produsele",
+    "orders": "Comenzi",
+    "account": "Cont",
+    "copyright": "Magazin Vendure. Toate drepturile rezervate.",
+    "poweredBy": "Realizat cu"
+  }
+}

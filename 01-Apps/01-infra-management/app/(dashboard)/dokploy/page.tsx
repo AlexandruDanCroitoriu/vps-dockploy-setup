@@ -11,6 +11,8 @@ import {
 } from "@/lib/github/repository-applications";
 import { getUnavailableComposeServiceDefinitionIds } from "@/compose-services/registry";
 import { getInfraManagementZotImage } from "@/lib/zot/infra-management-image";
+import { getVendureBackendZotImage } from "@/lib/zot/vendure-backend-image";
+import { getVendureStorefrontZotImage } from "@/lib/zot/vendure-storefront-image";
 
 import { ProjectCard } from "./_components/project/project-card";
 import { CreateProjectDialog } from "./_components/project/create-project-dialog";
@@ -65,12 +67,22 @@ async function ProjectsContent() {
     repositoryApplications,
     activeInstance,
     infraManagementImage,
+    vendureBackendImage,
+    storefrontImage,
+    storefrontCleanImage,
   ] = await Promise.all([
     getActiveDokployProjectSnapshot(),
     getDokployGithubProviders().catch(() => []),
     getRepositoryApplicationsResult(),
     getActiveDokployConfiguration(),
     getInfraManagementZotImage(),
+    getVendureBackendZotImage(),
+    getVendureStorefrontZotImage(
+      "/01-Apps/02-Online-Store-Vendure/apps/storefront",
+    ),
+    getVendureStorefrontZotImage(
+      "/01-Apps/02-Online-Store-Vendure/apps/storefront-clean",
+    ),
   ]);
   const unavailableComposeDefinitionIds =
     getUnavailableComposeServiceDefinitionIds(projects);
@@ -97,6 +109,16 @@ async function ProjectsContent() {
                 infraManagementImageAvailability={{
                   available: infraManagementImage.available,
                   message: infraManagementImage.message,
+                }}
+                vendureBackendImageAvailability={{
+                  available: vendureBackendImage.available,
+                  message: vendureBackendImage.message,
+                }}
+                vendureStorefrontImageAvailability={{
+                  "/01-Apps/02-Online-Store-Vendure/apps/storefront":
+                    storefrontImage,
+                  "/01-Apps/02-Online-Store-Vendure/apps/storefront-clean":
+                    storefrontCleanImage,
                 }}
                 rootDomain={activeInstance?.rootDomain ?? ""}
                 defaultServiceCredentials={{

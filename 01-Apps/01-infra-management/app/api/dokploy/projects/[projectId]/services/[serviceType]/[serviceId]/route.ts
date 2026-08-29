@@ -27,6 +27,10 @@ import {
   type DokployServiceType,
 } from "@/lib/dokploy";
 import { refreshSidebarProjectSnapshot } from "@/lib/dokploy/sidebar-project-snapshot";
+import {
+  isVendureBackendService,
+  removeVendureEmailEnvironment,
+} from "@/lib/vendure/backend-environment";
 
 export async function GET(
   _request: Request,
@@ -154,8 +158,13 @@ export async function DELETE(
       service.type === "compose"
         ? getComposeServiceDefinitionByName(service.name)
         : undefined;
+    const removedVendureBackend = isVendureBackendService(service);
     await removeDokployService(service.type, service.id);
-    if (isDatabaseService(service.type) || removedComposeDefinition) {
+    if (
+      isDatabaseService(service.type) ||
+      removedComposeDefinition ||
+      removedVendureBackend
+    ) {
       const refreshedProject = await getFreshDokployProject(projectId);
       const remainingServices = (refreshedProject?.environments ?? [])
         .flatMap((environment) => environment.services)
@@ -168,7 +177,23 @@ export async function DELETE(
           remainingServices,
         );
       }
-      if (removedComposeDefinition?.environmentTarget === "project") {
+      if (
+        removedVendureBackend &&
+        !remainingServices.some(isVendureBackendService)
+      ) {
+        projectEnvironment = removeVendureEmailEnvironment(projectEnvironment);
+      }
+      if (
+        removedComposeDefinition &&
+        (removedComposeDefinition.environmentTarget === "project" ||
+          removedComposeDefinition.projectEnvironmentVariables) &&
+        !remainingServices.some(
+          (candidate) =>
+            candidate.type === "compose" &&
+            getComposeServiceDefinitionByName(candidate.name)?.id ===
+              removedComposeDefinition.id,
+        )
+      ) {
         projectEnvironment = removeDokployProjectEnvEntries(
           projectEnvironment,
           resolveComposeProjectEnvironmentKeys(removedComposeDefinition, {

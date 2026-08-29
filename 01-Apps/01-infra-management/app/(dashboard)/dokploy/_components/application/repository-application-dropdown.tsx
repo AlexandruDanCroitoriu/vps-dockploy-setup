@@ -13,25 +13,40 @@ export function RepositoryApplicationDropdown({
   applications,
   applicationsError,
   deployedApplications,
+  vendureBackendDeployment,
   infraManagementImageAvailability,
+  vendureBackendImageAvailability,
+  vendureStorefrontImageAvailability,
   onSelect,
 }: {
   disabled: boolean;
   applications: RepositoryApplication[];
   applicationsError: string;
   deployedApplications: RepositoryApplicationDeployment[];
+  vendureBackendDeployment?: RepositoryApplicationDeployment;
   infraManagementImageAvailability: {
     available: boolean;
     message: string;
   };
-  onSelect: (application: RepositoryApplication) => void;
+  vendureBackendImageAvailability: { available: boolean; message: string };
+  vendureStorefrontImageAvailability: Record<
+    string,
+    { available: boolean; message: string }
+  >;
+  onSelect: (
+    application: RepositoryApplication,
+    parentDeployment?: RepositoryApplicationDeployment,
+  ) => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useClickOutside<HTMLDivElement>(open, setOpen);
 
-  function select(application: RepositoryApplication) {
+  function select(
+    application: RepositoryApplication,
+    parentDeployment?: RepositoryApplicationDeployment,
+  ) {
     setOpen(false);
-    onSelect(application);
+    onSelect(application, parentDeployment);
   }
 
   return (
@@ -72,6 +87,9 @@ export function RepositoryApplicationDropdown({
           ) : (
             <ul className="max-h-72 overflow-y-auto py-1">
               {applications.map((application) => {
+                const parentDeployment = application.parentPath
+                  ? vendureBackendDeployment
+                  : undefined;
                 const deployed = isRepositoryApplicationDeployed(
                   application,
                   deployedApplications,
@@ -81,22 +99,45 @@ export function RepositoryApplicationDropdown({
                 const registryUnavailable =
                   isInfraManagement &&
                   !infraManagementImageAvailability.available;
-                const unavailable = deployed || registryUnavailable;
+                const vendureRegistryUnavailable =
+                  application.kind === "vendure-backend" &&
+                  !vendureBackendImageAvailability.available;
+                const missingVendureBackend =
+                  application.kind === "vendure-storefront" &&
+                  !parentDeployment?.id;
+                const storefrontImageAvailability =
+                  vendureStorefrontImageAvailability[`/${application.path}`];
+                const storefrontRegistryUnavailable =
+                  application.kind === "vendure-storefront" &&
+                  !storefrontImageAvailability?.available;
+                const unavailable =
+                  deployed ||
+                  registryUnavailable ||
+                  vendureRegistryUnavailable ||
+                  storefrontRegistryUnavailable ||
+                  missingVendureBackend;
 
                 return (
                   <li key={application.path}>
                     <button
                       type="button"
-                      onClick={() => select(application)}
+                      onClick={() => select(application, parentDeployment)}
                       disabled={unavailable}
                       title={
                         deployed
                           ? "Already deployed on this Dockploy instance"
                           : registryUnavailable
                             ? infraManagementImageAvailability.message
-                            : undefined
+                            : vendureRegistryUnavailable
+                              ? vendureBackendImageAvailability.message
+                              : storefrontRegistryUnavailable
+                                ? (storefrontImageAvailability?.message ??
+                                  "The storefront image is not available in Zot.")
+                                : missingVendureBackend
+                                  ? "Deploy the Vendure backend first"
+                                  : undefined
                       }
-                      className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent dark:hover:bg-indigo-500/10 dark:disabled:hover:bg-transparent"
+                      className={`flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent dark:hover:bg-indigo-500/10 dark:disabled:hover:bg-transparent ${application.kind === "vendure-storefront" ? "pl-8" : ""}`}
                     >
                       <FolderIcon
                         className="size-4 shrink-0 text-indigo-500"
@@ -117,7 +158,11 @@ export function RepositoryApplicationDropdown({
                             ? "Already deployed on this instance"
                             : registryUnavailable
                               ? infraManagementImageAvailability.message
-                              : `/${application.path}`}
+                              : vendureRegistryUnavailable
+                                ? vendureBackendImageAvailability.message
+                                : missingVendureBackend
+                                  ? "Deploy the Vendure backend first"
+                                  : `/${application.path}`}
                         </span>
                       </span>
                     </button>

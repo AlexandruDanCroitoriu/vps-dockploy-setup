@@ -1,0 +1,33 @@
+{
+  "Hero": {
+    "title": "Descoperă produse",
+    "titleHighlight": "de calitate",
+    "subtitle": "Produse premium la prețuri excelente.",
+    "shopNow": "Cumpără acum",
+    "viewCollections": "Vezi colecțiile"
+  },
+  "Home": {
+    "pageTitle": "Magazinul tău complet",
+    "description": "Descoperă produse de calitate la prețuri competitive.",
+    "ogDescription": "Descoperă produse de calitate la prețuri competitive.",
+    "collectionsTitle": "Colecții",
+    "collectionsDescription": "Descoperă toate colecțiile noastre și găsește ceva potrivit pentru tine.",
+    "noCollections": "Momentan nu există colecții disponibile.",
+    "noImage": "Fără imagine",
+    "whyShopWithUs": "De ce să cumperi de la noi",
+    "features": {
+      "highQuality": {
+        "title": "Calitate înaltă",
+        "description": "Produse premium alese cu grijă pentru tine"
+      },
+      "bestPrices": {
+        "title": "Cele mai bune prețuri",
+        "description": "Prețuri competitive pentru toate produsele"
+      },
+      "fastDelivery": {
+        "title": "Livrare rapidă",
+        "description": "Livrare rapidă și sigură"
+      }
+    }
+  }
+}

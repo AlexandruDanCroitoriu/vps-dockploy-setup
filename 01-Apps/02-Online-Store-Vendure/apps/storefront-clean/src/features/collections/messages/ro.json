@@ -1,0 +1,7 @@
+{
+  "Collection": {
+    "home": "Acasă",
+    "collectionNotFound": "Colecția nu a fost găsită",
+    "browseCollectionAt": "Descoperă colecția {name} pe {siteName}"
+  }
+}

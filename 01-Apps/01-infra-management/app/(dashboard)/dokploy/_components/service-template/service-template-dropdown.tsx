@@ -12,7 +12,7 @@ import {
   notifyProjectServiceCreation,
 } from "@/lib/project-events";
 
-const templateServices = [
+const infrastructureTemplateServices = [
   {
     key: "postgres",
     matchName: "postgres",
@@ -43,19 +43,64 @@ const templateServices = [
   },
 ] as const;
 
-type TemplateServiceKey = (typeof templateServices)[number]["key"];
+const vendureTemplateServices = [
+  {
+    key: "postgres",
+    matchName: "postgres",
+    displayName: "PostgreSQL",
+    typeLabel: "PostgreSQL",
+    serviceType: "postgres",
+  },
+  {
+    key: "garage",
+    matchName: "Garage with UI",
+    displayName: "Garage with UI",
+    typeLabel: "Compose",
+    serviceType: "compose",
+  },
+  {
+    key: "vendure",
+    matchName: "vendure",
+    displayName: "Vendure",
+    typeLabel: "Application",
+    serviceType: "applications",
+  },
+  {
+    key: "storefront-clean",
+    matchName: "vendure-storefront-clean",
+    displayName: "Vendure storefront-clean",
+    typeLabel: "Application",
+    serviceType: "applications",
+  },
+  {
+    key: "storefront",
+    matchName: "vendure-storefront",
+    displayName: "Vendure storefront",
+    typeLabel: "Application",
+    serviceType: "applications",
+  },
+] as const;
+
+type TemplateId = "postgres-redis-dbgate" | "vendure-stack";
+type TemplateService =
+  | (typeof infrastructureTemplateServices)[number]
+  | (typeof vendureTemplateServices)[number];
 
 export function ServiceTemplateDropdown({
   projectId,
   environmentExists,
+  rootDomain,
   services,
 }: {
   projectId: string;
   environmentExists: boolean;
+  rootDomain: string;
   services: Array<{ type: string; name: string }>;
 }) {
   const [open, setOpen] = useState(false);
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<TemplateId | null>(
+    null,
+  );
   const [error, setError] = useState("");
   const ref = useClickOutside<HTMLDivElement>(open, setOpen);
   const templateUnavailable = services.some(
@@ -67,14 +112,31 @@ export function ServiceTemplateDropdown({
           service.name.toLowerCase(),
         )),
   );
+  const vendureTemplateUnavailable = services.some(
+    (service) =>
+      service.type === "postgres" ||
+      (service.type === "compose" &&
+        ["garage", "garage with ui"].includes(service.name.toLowerCase())) ||
+      (service.type === "applications" &&
+        ["vendure", "vendure-storefront", "vendure-storefront-clean"].includes(
+          service.name.toLowerCase(),
+        )),
+  );
 
   async function deployTemplate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     const garageCapacityGb = Number(formData.get("garageCapacityGb"));
-    setIsCreateOpen(false);
+    const garageS3Host = String(formData.get("garageS3Host") ?? "");
+    const templateId = selectedTemplate;
+    if (!templateId) return;
+    const templateServices: readonly TemplateService[] =
+      templateId === "vendure-stack"
+        ? vendureTemplateServices
+        : infrastructureTemplateServices;
+    setSelectedTemplate(null);
     setError("");
-    const requests = new Map(
+    const requests = new Map<string, string>(
       templateServices.map((service) => [service.key, crypto.randomUUID()]),
     );
     for (const service of templateServices) {
@@ -98,8 +160,9 @@ export function ServiceTemplateDropdown({
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            templateId: "postgres-redis-dbgate",
+            templateId,
             garageCapacityGb,
+            garageS3Host,
           }),
         },
       );
@@ -110,14 +173,20 @@ export function ServiceTemplateDropdown({
       };
       const createdKeys = new Set<string>();
       for (const service of result.services ?? []) {
-        const key: TemplateServiceKey | null =
-          service.type === "compose"
-            ? ["garage", "garage with ui"].includes(service.name.toLowerCase())
-              ? "garage"
-              : "dbgate"
-            : service.type === "postgres" || service.type === "redis"
-              ? service.type
-              : null;
+        const key =
+          templateId === "vendure-stack" && service.type === "applications"
+            ? service.name.toLowerCase() === "vendure"
+              ? "vendure"
+              : service.name.toLowerCase().replace(/^vendure-/, "")
+            : service.type === "compose"
+              ? ["garage", "garage with ui"].includes(
+                  service.name.toLowerCase(),
+                )
+                ? "garage"
+                : "dbgate"
+              : service.type === "postgres" || service.type === "redis"
+                ? service.type
+                : null;
         if (!key) continue;
         const requestId = requests.get(key);
         if (!requestId) continue;
@@ -181,7 +250,7 @@ export function ServiceTemplateDropdown({
               type="button"
               onClick={() => {
                 setOpen(false);
-                setIsCreateOpen(true);
+                setSelectedTemplate("postgres-redis-dbgate");
               }}
               disabled={templateUnavailable}
               className="block w-full px-3 py-3 text-left hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-45 dark:hover:bg-indigo-500/10"
@@ -193,6 +262,24 @@ export function ServiceTemplateDropdown({
                 {templateUnavailable
                   ? "Remove existing PostgreSQL, Redis, DBGate, or Garage services first."
                   : "Creates both databases, DBGate, and Garage with its authenticated WebUI."}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                setSelectedTemplate("vendure-stack");
+              }}
+              disabled={vendureTemplateUnavailable}
+              className="block w-full border-t border-gray-200 px-3 py-3 text-left hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-45 dark:border-white/10 dark:hover:bg-indigo-500/10"
+            >
+              <span className="block text-sm font-medium text-gray-800 dark:text-gray-200">
+                Complete Vendure stack
+              </span>
+              <span className="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">
+                {vendureTemplateUnavailable
+                  ? "Remove existing PostgreSQL, Garage, or Vendure services first."
+                  : "Creates PostgreSQL, Garage, the Vendure backend, and both storefronts."}
               </span>
             </button>
           </div>
@@ -208,17 +295,25 @@ export function ServiceTemplateDropdown({
         )}
       </div>
 
-      {isCreateOpen && (
+      {selectedTemplate && (
         <AppDialog
           open
-          onClose={() => setIsCreateOpen(false)}
-          title="Add project services"
-          description="Create PostgreSQL, Redis, DBGate, and Garage with its WebUI."
+          onClose={() => setSelectedTemplate(null)}
+          title={
+            selectedTemplate === "vendure-stack"
+              ? "Deploy complete Vendure stack"
+              : "Add project services"
+          }
+          description={
+            selectedTemplate === "vendure-stack"
+              ? "Create PostgreSQL, Garage, the Vendure backend, and both storefronts."
+              : "Create PostgreSQL, Redis, DBGate, and Garage with its WebUI."
+          }
           footer={
             <div className="flex justify-end gap-2">
               <Button
                 type="button"
-                onClick={() => setIsCreateOpen(false)}
+                onClick={() => setSelectedTemplate(null)}
                 variant="secondary"
                 size="xs"
               >
@@ -229,7 +324,9 @@ export function ServiceTemplateDropdown({
                 form="create-service-template-form"
                 size="xs"
               >
-                Create services
+                {selectedTemplate === "vendure-stack"
+                  ? "Deploy Vendure stack"
+                  : "Create services"}
               </Button>
             </div>
           }
@@ -259,6 +356,21 @@ export function ServiceTemplateDropdown({
               Garage will automatically initialize its single-node layout in the
               local zone with this capacity.
             </p>
+            <FormField
+              label="Garage S3 API domain hostname"
+              htmlFor="garage-s3-host"
+            >
+              <input
+                id="garage-s3-host"
+                name="garageS3Host"
+                type="text"
+                required
+                autoComplete="off"
+                defaultValue={rootDomain ? `s3.${rootDomain}` : ""}
+                placeholder="s3.example.com"
+                className={inputClassName}
+              />
+            </FormField>
           </form>
         </AppDialog>
       )}

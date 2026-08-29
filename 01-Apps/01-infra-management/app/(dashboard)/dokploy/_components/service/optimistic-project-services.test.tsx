@@ -54,7 +54,9 @@ describe("OptimisticProjectServices", () => {
     });
 
     expect(screen.getByText("PostgreSQL")).toBeInTheDocument();
-    expect(screen.getByText("PostgreSQL · Creating…")).toBeInTheDocument();
+    expect(
+      screen.queryByText("PostgreSQL · Creating…"),
+    ).not.toBeInTheDocument();
 
     rerender(
       <OptimisticProjectServices
@@ -223,10 +225,13 @@ describe("OptimisticProjectServices", () => {
     });
 
     await waitFor(() =>
-      expect(screen.getByText("Compose · Running")).toBeInTheDocument(),
+      expect(
+        screen.getByRole("button", { name: "Settings for DBGate" }),
+      ).toBeInTheDocument(),
     );
+    expect(screen.queryByText("Compose · Running")).not.toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: /dbgate\.example\.com/ }),
+      await screen.findByRole("link", { name: /dbgate\.example\.com/ }),
     ).toHaveAttribute("href", "https://dbgate.example.com");
     expect(
       screen.getByRole("button", { name: "Settings for DBGate" }),
@@ -239,6 +244,54 @@ describe("OptimisticProjectServices", () => {
     expect(fetch).toHaveBeenCalledWith(
       "/api/dokploy/projects/project-1/services/compose/compose-1",
     );
+  });
+
+  it("opens an optimistically created Vendure backend at its dashboard", async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        status: "running",
+        appName: "vendure",
+        env: "APP_ENV=production",
+        credentials: [],
+        domains: [
+          {
+            domainId: "domain-vendure",
+            host: "vendure.example.com",
+            https: true,
+          },
+        ],
+      }),
+    } as Response);
+    render(
+      <OptimisticProjectServices projectId="project-1" existingServices={[]}>
+        {null}
+      </OptimisticProjectServices>,
+    );
+
+    act(() => {
+      notifyProjectServiceCreation({
+        phase: "started",
+        service: {
+          requestId: "request-vendure",
+          projectId: "project-1",
+          matchName: "vendure",
+          displayName: "Vendure",
+          typeLabel: "Application",
+          serviceType: "applications",
+        },
+      });
+      notifyProjectServiceCreation({
+        phase: "completed",
+        requestId: "request-vendure",
+        projectId: "project-1",
+        serviceId: "application-vendure",
+      });
+    });
+
+    expect(
+      await screen.findByRole("link", { name: /vendure\.example\.com/ }),
+    ).toHaveAttribute("href", "https://vendure.example.com/dashboard");
   });
 
   it("hides a streamed real card until it atomically replaces its optimistic card", () => {

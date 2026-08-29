@@ -2,7 +2,6 @@
 
 import {
   ArrowPathIcon,
-  ArrowTopRightOnSquareIcon,
   ArrowUpTrayIcon,
   CubeIcon,
   TrashIcon,
@@ -15,23 +14,23 @@ import {
   useRef,
   useState,
 } from "react";
+import { useFormStatus } from "react-dom";
 
 import { Button } from "@/components/ui/button";
 import { ActionMessage } from "@/components/ui/form-field";
 import type { LocalDockerImage } from "@/lib/docker/local-image-builder";
 import type { ImageJob } from "@/lib/docker/image-jobs";
-import type { RepositoryProject } from "@/lib/repository-projects";
-import type { ZotRegistryImage } from "@/lib/zot/registry-images";
+import type {
+  RepositoryImageTarget,
+  RepositoryProject,
+} from "@/lib/repository-projects";
 
 import {
-  buildAndPushProjectImageAction,
   buildProjectImageAction,
   type BuildImageState,
   deleteLocalProjectImageAction,
-  deleteZotProjectImageAction,
-  pushProjectImageToAllRegistriesAction,
+  pushProjectImageToRegistryAction,
 } from "../_actions/build-image";
-import { RefreshZotButton } from "./refresh-zot-button";
 
 const initialState: BuildImageState = { status: "idle", message: "" };
 
@@ -39,43 +38,52 @@ type ProjectRegistry = {
   instanceId: string;
   instanceName: string;
   host: string;
-  images: ZotRegistryImage[];
-  error: string;
+  publishedImages: Array<{
+    tag: string;
+    digest: string;
+    configDigest: string;
+  }>;
 };
+
+function registryHasLocalImage(
+  registry: ProjectRegistry,
+  image: { tag: string; identifier: string; digests: string[] },
+) {
+  return registry.publishedImages.some(
+    (published) =>
+      published.tag === image.tag &&
+      (published.configDigest === image.identifier ||
+        image.digests.includes(published.digest)),
+  );
+}
 
 export function ProjectImageCard({
   project,
+  target,
   registries,
   localImages,
   localImagesError,
   dockerAvailable,
   initialJob,
+  embedded = false,
 }: {
   project: RepositoryProject;
+  target: RepositoryImageTarget;
   registries: ProjectRegistry[];
   localImages: LocalDockerImage[];
   localImagesError: string;
   dockerAvailable: boolean;
   initialJob: ImageJob | null;
+  embedded?: boolean;
 }) {
   const [buildState, buildAction, buildPending] = useActionState(
     buildProjectImageAction,
     initialState,
   );
-  const [pushState, pushAction, pushPending] = useActionState(
-    pushProjectImageToAllRegistriesAction,
-    initialState,
-  );
-  const [buildPushState, buildPushAction, buildPushPending] = useActionState(
-    buildAndPushProjectImageAction,
-    initialState,
-  );
   const [localDeleteState, localDeleteAction, localDeletePending] =
     useActionState(deleteLocalProjectImageAction, initialState);
-  const [zotDeleteState, zotDeleteAction, zotDeletePending] = useActionState(
-    deleteZotProjectImageAction,
-    initialState,
-  );
+  const [registryPushState, registryPushAction, registryPushPending] =
+    useActionState(pushProjectImageToRegistryAction, initialState);
   const [job, setJob] = useState(initialJob);
   const previousJobStatus = useRef(initialJob?.status);
   const router = useRouter();
@@ -86,12 +94,12 @@ export function ProjectImageCard({
     if (!response.ok) return;
     const payload = (await response.json()) as { jobs?: ImageJob[] };
     const nextJob = payload.jobs?.find(
-      (candidate) => candidate.projectName === project.name,
+      (candidate) => candidate.projectName === `${project.name}:${target.id}`,
     );
     if (nextJob) setJob(nextJob);
-  }, [project.name]);
+  }, [project.name, target.id]);
 
-  const currentJob = [job, buildState.job, pushState.job, buildPushState.job]
+  const currentJob = [job, buildState.job]
     .filter(
       (candidate): candidate is ImageJob =>
         candidate !== null && candidate !== undefined,
@@ -119,154 +127,139 @@ export function ProjectImageCard({
   }, [currentJob?.status, router]);
 
   const actionState =
-    buildPushState.status !== "idle"
-      ? buildPushState
-      : pushState.status !== "idle"
-        ? pushState
-        : buildState;
+    registryPushState.status !== "idle" ? registryPushState : buildState;
   const state = currentJob ?? actionState;
   const jobRunning = currentJob?.status === "running";
   const building = jobRunning && currentJob.type === "build";
-  const pushing = jobRunning && currentJob.type === "push";
-  const buildingAndPushing = jobRunning && currentJob.type === "build-push";
-  const imageActionPending =
-    buildPending || pushPending || buildPushPending || jobRunning;
+  const imageActionPending = buildPending || jobRunning;
   const availableRegistries = registries.filter((registry) => registry.host);
 
   useEffect(() => {
     if (
       buildState.status === "success" ||
-      pushState.status === "success" ||
-      buildPushState.status === "success" ||
-      localDeleteState.status === "success" ||
-      zotDeleteState.status === "success"
+      registryPushState.status === "success" ||
+      localDeleteState.status === "success"
     ) {
       router.refresh();
     }
   }, [
     buildState.status,
-    pushState.status,
-    buildPushState.status,
+    registryPushState.status,
     localDeleteState.status,
-    zotDeleteState.status,
     router,
   ]);
+  const Container = embedded ? "section" : "article";
   return (
-    <article className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-gray-800/50">
+    <Container
+      className={
+        embedded
+          ? "relative py-4 pl-6 before:absolute before:top-7 before:-left-px before:h-px before:w-4 before:bg-gray-200 last:pb-0 dark:before:bg-white/10"
+          : "rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-gray-800/50"
+      }
+    >
+      {embedded && (
+        <span
+          className="absolute top-[1.4rem] -left-1.5 size-3 rounded-full border-2 border-white bg-indigo-500 dark:border-gray-800"
+          aria-hidden="true"
+        />
+      )}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
-          <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">
-            <CubeIcon className="size-5" aria-hidden="true" />
-          </div>
+          {!embedded && (
+            <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">
+              <CubeIcon className="size-5" aria-hidden="true" />
+            </div>
+          )}
           <div className="min-w-0">
-            <h2 className="font-semibold text-gray-900 dark:text-gray-100">
-              {project.name}
-            </h2>
-            <p className="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">
-              {project.path}
-            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="font-semibold text-gray-900 dark:text-gray-100">
+                {embedded ? target.imageRepository : target.name}
+              </h2>
+              <form action={buildAction}>
+                <input type="hidden" name="projectName" value={project.name} />
+                <input type="hidden" name="targetId" value={target.id} />
+                <input type="hidden" name="tag" value="latest" />
+                <Button
+                  type="submit"
+                  size="xs"
+                  disabled={
+                    imageActionPending || !target.available || !dockerAvailable
+                  }
+                  title={
+                    dockerAvailable ? "Build image" : "Docker is not available"
+                  }
+                  className="inline-flex items-center gap-1.5"
+                >
+                  {building || buildPending ? (
+                    <ArrowPathIcon
+                      className="size-3.5 animate-spin"
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <CubeIcon className="size-3.5" aria-hidden="true" />
+                  )}
+                  {building || buildPending ? "Building…" : "Build"}
+                </Button>
+              </form>
+            </div>
+            {!embedded && (
+              <p className="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">
+                {`${project.name} · ${project.path}/${target.contextPath === "." ? "" : target.contextPath}`}
+              </p>
+            )}
           </div>
         </div>
-        <form className="flex shrink-0 flex-wrap justify-end gap-2">
-          <input type="hidden" name="projectName" value={project.name} />
-          <input type="hidden" name="tag" value="latest" />
-          <Button
-            type="submit"
-            formAction={buildAction}
-            disabled={
-              imageActionPending || !project.hasDockerfile || !dockerAvailable
-            }
-            title={dockerAvailable ? "Build image" : "Docker is not available"}
-            className="inline-flex items-center gap-1.5"
-          >
-            {building || buildPending ? (
-              <ArrowPathIcon
-                className="size-4 animate-spin"
-                aria-hidden="true"
-              />
-            ) : (
-              <CubeIcon className="size-4" aria-hidden="true" />
-            )}
-            {building || buildPending ? "Building…" : "Build"}
-          </Button>
-          <Button
-            type="submit"
-            formAction={buildPushAction}
-            disabled={
-              imageActionPending ||
-              !project.hasDockerfile ||
-              !dockerAvailable ||
-              availableRegistries.length === 0
-            }
-            title={
-              availableRegistries.length > 0
-                ? "Build the image and push it to every Zot registry"
-                : "Deploy Zot on a configured instance before building and pushing"
-            }
-            variant="success"
-            className="inline-flex items-center gap-1.5"
-          >
-            {buildingAndPushing || buildPushPending ? (
-              <ArrowPathIcon
-                className="size-4 animate-spin"
-                aria-hidden="true"
-              />
-            ) : (
-              <ArrowUpTrayIcon className="size-4" aria-hidden="true" />
-            )}
-            {buildingAndPushing || buildPushPending
-              ? "Building & pushing…"
-              : "Build & push"}
-          </Button>
-        </form>
       </div>
+
+      {!target.available && (
+        <p className="mt-3 text-xs text-amber-700 dark:text-amber-300">
+          Add a Dockerfile to this project before building an image.
+        </p>
+      )}
 
       {state.status !== "success" && (
         <ActionMessage status={state.status} message={state.message} />
       )}
 
-      <div className="mt-5 space-y-5 border-t border-gray-200 pt-5 dark:border-white/10">
+      <div
+        className={
+          embedded
+            ? "mt-3 w-full border-t border-gray-100 pt-3 dark:border-white/5"
+            : "mt-5 space-y-5 border-t border-gray-200 pt-5 dark:border-white/10"
+        }
+      >
         <LocalImageList
-          title="Local Docker images"
           projectName={project.name}
+          targetId={target.id}
           emptyMessage="No local builds yet."
           error={localImagesError}
           deleteAction={localDeleteAction}
           deletePending={localDeletePending}
           deleteState={localDeleteState}
+          registries={availableRegistries}
+          pushAction={registryPushAction}
+          pushPending={registryPushPending}
+          pushState={registryPushState}
           items={localImages.map((image) => ({
             key: `${image.name}:${image.tag}`,
-            name: `${image.name}:${image.tag}`,
+            name: target.imageRepository,
             tag: image.tag,
             identifier: image.imageId,
+            digests: image.digests,
             date: image.createdAt,
             label: image.current ? "Current" : "Previous",
           }))}
         />
-        <ZotRegistryTable
-          project={project}
-          registries={registries}
-          localImagesAvailable={localImages.length > 0}
-          imageActionPending={imageActionPending}
-          pushing={pushing || pushPending}
-          pushAction={pushAction}
-          deleteAction={zotDeleteAction}
-          deletePending={zotDeletePending}
-          deleteState={zotDeleteState}
-        />
       </div>
-
-      {!project.hasDockerfile && (
-        <p className="mt-3 text-xs text-amber-700 dark:text-amber-300">
-          Add a Dockerfile to this project before building an image.
-        </p>
-      )}
-    </article>
+    </Container>
   );
 }
 
+/* Removed: remote Zot inventory table. Image rows now own per-instance pushes.
 function ZotRegistryTable({
+  title,
   project,
+  target,
   registries,
   localImagesAvailable,
   imageActionPending,
@@ -276,7 +269,9 @@ function ZotRegistryTable({
   deletePending,
   deleteState,
 }: {
+  title: string;
   project: RepositoryProject;
+  target: RepositoryImageTarget;
   registries: ProjectRegistry[];
   localImagesAvailable: boolean;
   imageActionPending: boolean;
@@ -290,12 +285,13 @@ function ZotRegistryTable({
     <section>
       <div className="flex min-h-7 items-center justify-between gap-2">
         <h3 className="text-xs font-semibold text-gray-900 dark:text-gray-100">
-          Zot repositories
+          {title}
         </h3>
         <div className="flex items-center gap-1">
           <RefreshZotButton />
           <form action={pushAction}>
             <input type="hidden" name="projectName" value={project.name} />
+            <input type="hidden" name="targetId" value={target.id} />
             <input type="hidden" name="tag" value="latest" />
             <Button
               type="submit"
@@ -303,7 +299,7 @@ function ZotRegistryTable({
               variant="success"
               disabled={
                 imageActionPending ||
-                !project.hasDockerfile ||
+                !target.available ||
                 !localImagesAvailable ||
                 !registries.some((registry) => registry.host)
               }
@@ -336,35 +332,31 @@ function ZotRegistryTable({
               <th scope="col" className="px-3 py-2 font-semibold">
                 Dokploy instance
               </th>
-              <th scope="col" className="px-3 py-2 font-semibold">
-                Repository versions
-              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-white/5">
             {registries.map((registry) => (
               <tr key={registry.instanceId} className="align-top">
-                <th
-                  scope="row"
-                  className="min-w-40 px-3 py-3 font-medium text-gray-900 dark:text-gray-100"
-                >
-                  <span className="block">{registry.instanceName}</span>
-                  {registry.host && (
-                    <a
-                      href={`https://${registry.host}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-0.5 inline-flex items-center gap-1 font-normal text-indigo-600 hover:underline dark:text-indigo-300"
-                    >
-                      {registry.host}
-                      <ArrowTopRightOnSquareIcon
-                        className="size-3 shrink-0"
-                        aria-hidden="true"
-                      />
-                    </a>
-                  )}
-                </th>
-                <td className="min-w-72 px-3 py-3">
+                <th scope="row" className="min-w-40 px-3 py-3 font-medium">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    {registry.host ? (
+                      <a
+                        href={`https://${registry.host}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-indigo-600 hover:underline dark:text-indigo-300"
+                      >
+                        {registry.instanceName}
+                        <ArrowTopRightOnSquareIcon
+                          className="size-3 shrink-0"
+                          aria-hidden="true"
+                        />
+                      </a>
+                    ) : (
+                      <span className="text-gray-900 dark:text-gray-100">
+                        {registry.instanceName}
+                      </span>
+                    )}
                   {registry.error ? (
                     <p className="text-red-600 dark:text-red-400">
                       {registry.error}
@@ -373,51 +365,35 @@ function ZotRegistryTable({
                     <p className="text-gray-500 dark:text-gray-400">
                       Zot registry is not deployed in this instance.
                     </p>
-                  ) : registry.images.length === 0 ? (
+                  ) : !registry.images.some((image) => image.current) ? (
                     <p className="text-gray-500 dark:text-gray-400">
-                      No published versions yet.
+                      No current image.
                     </p>
                   ) : (
-                    <ul className="divide-y divide-gray-100 dark:divide-white/5">
-                      {registry.images.map((image) => (
-                        <li
-                          key={`${image.digest}:${image.tag}`}
-                          className="flex items-center gap-3 py-2 first:pt-0 last:pb-0"
-                        >
-                          <div className="min-w-0 flex-1">
+                    registry.images
+                      .filter((image) => image.current)
+                      .slice(0, 1)
+                      .map((image) => (
+                        <div key={`${image.digest}:${image.tag}`} className="flex items-center gap-2">
                             <a
-                              href={`https://${registry.host}`}
+                              href={`https://${registry.host}/image/${encodeURIComponent(image.name)}`}
                               target="_blank"
                               rel="noreferrer"
                               className="inline-flex max-w-full items-center gap-1 font-medium text-indigo-600 hover:underline dark:text-indigo-300"
                               title={`Open ${image.name}:${image.tag} in Zot`}
                             >
-                              <span className="truncate">
-                                {image.name}:{image.tag}
-                              </span>
+                              <span className="truncate">{image.name}:{image.tag}</span>
                               <ArrowTopRightOnSquareIcon
                                 className="size-3.5 shrink-0"
                                 aria-hidden="true"
                               />
                             </a>
-                            <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
-                              {formatImageDate(image.publishedAt)}
-                            </p>
-                          </div>
-                          {image.current && (
-                            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300">
-                              Current
-                            </span>
-                          )}
                           <form
                             action={deleteAction}
                             onSubmit={(event) => {
-                              if (
-                                image.current &&
-                                !window.confirm(
+                              if (!window.confirm(
                                   `Delete the current image ${image.name}:${image.tag}? This image may be in use.`,
-                                )
-                              ) {
+                                )) {
                                 event.preventDefault();
                               }
                             }}
@@ -426,6 +402,11 @@ function ZotRegistryTable({
                               type="hidden"
                               name="projectName"
                               value={project.name}
+                            />
+                            <input
+                              type="hidden"
+                              name="targetId"
+                              value={target.id}
                             />
                             <input
                               type="hidden"
@@ -451,17 +432,16 @@ function ZotRegistryTable({
                               />
                             </button>
                           </form>
-                        </li>
-                      ))}
-                    </ul>
+                        </div>
+                      ))
                   )}
-                </td>
+                  </div>
+                </th>
               </tr>
             ))}
             {registries.length === 0 && (
               <tr>
                 <td
-                  colSpan={2}
                   className="px-3 py-4 text-center text-gray-500 dark:text-gray-400"
                 >
                   No Dokploy instances are configured.
@@ -475,23 +455,29 @@ function ZotRegistryTable({
   );
 }
 
+*/
 function LocalImageList({
-  title,
   projectName,
+  targetId,
   items,
   emptyMessage,
   error,
   deleteAction,
   deletePending,
   deleteState,
+  registries,
+  pushAction,
+  pushPending,
+  pushState,
 }: {
-  title: string;
   projectName: string;
+  targetId: string;
   items: Array<{
     key: string;
     name: string;
     tag: string;
     identifier: string;
+    digests: string[];
     date: string;
     label?: string;
   }>;
@@ -500,19 +486,21 @@ function LocalImageList({
   deleteAction: (formData: FormData) => void;
   deletePending: boolean;
   deleteState: BuildImageState;
+  registries: ProjectRegistry[];
+  pushAction: (formData: FormData) => void;
+  pushPending: boolean;
+  pushState: BuildImageState;
 }) {
   return (
     <section>
-      <div className="flex min-h-7 items-center justify-between gap-2">
-        <h3 className="text-xs font-semibold text-gray-900 dark:text-gray-100">
-          {title}
-        </h3>
-      </div>
       {deleteState.status === "error" && (
         <ActionMessage
           status={deleteState.status}
           message={deleteState.message}
         />
+      )}
+      {pushState.status === "error" && (
+        <ActionMessage status={pushState.status} message={pushState.message} />
       )}
       {error ? (
         <p className="mt-2 text-xs text-red-600 dark:text-red-400">{error}</p>
@@ -522,58 +510,135 @@ function LocalImageList({
         </p>
       ) : (
         <ul className="mt-2 divide-y divide-gray-100 rounded-md border border-gray-200 dark:divide-white/5 dark:border-white/10">
-          {items.map((item) => (
-            <li key={item.key} className="flex items-center gap-3 px-3 py-2.5">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-medium text-gray-900 dark:text-gray-100">
-                  {item.name}
-                </p>
-                <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
-                  {formatImageDate(item.date)}
-                </p>
-              </div>
-              {item.label && (
-                <span
-                  className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                    item.label === "Current"
-                      ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300"
-                      : "bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-400"
-                  }`}
-                >
-                  {item.label}
-                </span>
-              )}
-              <form
-                action={deleteAction}
-                onSubmit={(event) => {
-                  if (
-                    item.label === "Current" &&
-                    !window.confirm(
-                      `Delete the current image ${item.name}? This image may be in use.`,
-                    )
-                  ) {
-                    event.preventDefault();
-                  }
-                }}
+          {items.map((item) => {
+            return (
+              <li
+                key={item.key}
+                className="flex items-center gap-3 px-3 py-2.5"
               >
-                <input type="hidden" name="projectName" value={projectName} />
-                <input type="hidden" name="tag" value={item.tag} />
-                <input type="hidden" name="digest" value={item.identifier} />
-                <button
-                  type="submit"
-                  disabled={deletePending}
-                  aria-label={`Delete ${item.name}`}
-                  title={`Delete ${item.name}`}
-                  className="rounded-md p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-red-400/10 dark:hover:text-red-300"
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-medium text-gray-900 dark:text-gray-100">
+                    {item.name}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
+                    {formatImageDate(item.date)}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center justify-end gap-1">
+                  {registries.map((registry) => {
+                    const published = registryHasLocalImage(registry, item);
+                    if (published) {
+                      return (
+                        <a
+                          key={registry.instanceId}
+                          href={`https://${registry.host}/image/${encodeURIComponent(item.name)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          title={`Open ${item.name} in ${registry.instanceName}`}
+                          className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-500"
+                        >
+                          <ArrowUpTrayIcon
+                            className="size-3.5"
+                            aria-hidden="true"
+                          />
+                          {registry.instanceName} ✓
+                        </a>
+                      );
+                    }
+                    return (
+                      <form key={registry.instanceId} action={pushAction}>
+                        <input
+                          type="hidden"
+                          name="projectName"
+                          value={projectName}
+                        />
+                        <input type="hidden" name="targetId" value={targetId} />
+                        <input type="hidden" name="tag" value={item.tag} />
+                        <input
+                          type="hidden"
+                          name="instanceId"
+                          value={registry.instanceId}
+                        />
+                        <RegistryPushButton
+                          imageName={item.name}
+                          instanceName={registry.instanceName}
+                          pushPending={pushPending}
+                        />
+                      </form>
+                    );
+                  })}
+                </div>
+                <form
+                  action={deleteAction}
+                  onSubmit={(event) => {
+                    if (
+                      item.label === "Current" &&
+                      !window.confirm(
+                        `Delete the current image ${item.name}? This image may be in use.`,
+                      )
+                    ) {
+                      event.preventDefault();
+                    }
+                  }}
                 >
-                  <TrashIcon className="size-4" aria-hidden="true" />
-                </button>
-              </form>
-            </li>
-          ))}
+                  <input type="hidden" name="projectName" value={projectName} />
+                  <input type="hidden" name="targetId" value={targetId} />
+                  <input type="hidden" name="tag" value={item.tag} />
+                  <input type="hidden" name="digest" value={item.identifier} />
+                  <button
+                    type="submit"
+                    disabled={deletePending}
+                    aria-label={`Delete ${item.name}`}
+                    title={`Delete ${item.name}`}
+                    className="rounded-md p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-red-400/10 dark:hover:text-red-300"
+                  >
+                    <TrashIcon className="size-4" aria-hidden="true" />
+                  </button>
+                </form>
+              </li>
+            );
+          })}
         </ul>
       )}
     </section>
+  );
+}
+
+function RegistryPushButton({
+  imageName,
+  instanceName,
+  pushPending,
+}: {
+  imageName: string;
+  instanceName: string;
+  pushPending: boolean;
+}) {
+  const { pending } = useFormStatus();
+
+  return (
+    <Button
+      type="submit"
+      size="xs"
+      variant="secondary"
+      disabled={pushPending}
+      aria-label={
+        pending
+          ? `Pushing ${imageName} to ${instanceName}`
+          : `Push ${imageName} to ${instanceName}`
+      }
+      title={`Push ${imageName} to ${instanceName}`}
+      className="inline-flex items-center gap-1"
+    >
+      {pending ? (
+        <ArrowPathIcon
+          className="size-3.5 animate-spin"
+          aria-hidden="true"
+        />
+      ) : (
+        <ArrowUpTrayIcon className="size-3.5" aria-hidden="true" />
+      )}
+      {pending ? "Pushing…" : instanceName}
+    </Button>
   );
 }
 

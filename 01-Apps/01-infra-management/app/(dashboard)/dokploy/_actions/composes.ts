@@ -1,15 +1,18 @@
 "use server";
 
+import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 
 import {
   getComposeServiceDefinition,
   getUnavailableComposeServiceDefinitionIds,
+  resolveComposeProjectEnvironment,
   resolveComposeServiceEnvironment,
   resolveComposeServiceReferences,
 } from "@/compose-services/registry";
 import {
   createDokployRawCompose,
+  getActiveDokployInstanceSummary,
   getDokployProject,
   getDokployProjects,
   isValidHostname,
@@ -39,6 +42,7 @@ export async function createComposeAction(
 
   const definitionId = formData.get("definitionId")?.toString() ?? "";
   const host = formData.get("host")?.toString().trim().toLowerCase() ?? "";
+  const s3Host = formData.get("s3Host")?.toString().trim().toLowerCase() ?? "";
   const loginUsername = formData.get("loginUsername")?.toString().trim() ?? "";
   const loginPassword = formData.get("loginPassword")?.toString() ?? "";
   const deployAfterCreate = deployAfterCreateRequested(formData);
@@ -62,6 +66,18 @@ export async function createComposeAction(
     };
   if (!generateDomain && host && !isValidHostname(host))
     return { status: "error", message: "Enter a valid domain hostname." };
+  if (definition.id === "garage-with-webui" && !isValidHostname(s3Host)) {
+    return {
+      status: "error",
+      message: "Enter a valid S3 API domain hostname.",
+    };
+  }
+  if (s3Host && s3Host === host) {
+    return {
+      status: "error",
+      message: "The Garage WebUI and S3 API must use different hostnames.",
+    };
+  }
   if (
     definition.requiresLoginCredentials &&
     (!loginUsername || !loginPassword)
@@ -114,6 +130,20 @@ export async function createComposeAction(
     }
     parameters.garageCapacityGb = String(capacityGb);
   }
+  if (definition.id === "garage-with-webui") {
+    const instance = await getActiveDokployInstanceSummary();
+    if (!instance || !isValidHostname(instance.rootDomain)) {
+      return {
+        status: "error",
+        message: "Configure a valid instance root domain before deploying Garage.",
+      };
+    }
+    parameters.s3Endpoint = `https://${s3Host}`;
+    parameters.assetUrlPrefix = `https://vendure.${instance.rootDomain}/assets/`;
+    parameters.s3Bucket = "vendure-assets";
+    parameters.s3AccessKeyId = `GK${randomBytes(12).toString("hex").toUpperCase()}`;
+    parameters.s3SecretAccessKey = randomBytes(32).toString("hex");
+  }
   const environmentVariables = resolveComposeServiceEnvironment(definition, {
     services: environment.services,
     projectEnvironment: project.env,
@@ -148,14 +178,28 @@ export async function createComposeAction(
   }
 
   try {
-    if (definition.environmentTarget === "project") {
+    if (
+      definition.environmentTarget === "project" ||
+      definition.projectEnvironmentVariables
+    ) {
       let projectEnvironment = mergeDatabaseCredentialsIntoProjectEnv(
         project.env,
         environment.services,
       );
+      const managedProjectEnvironment = [
+        definition.environmentTarget === "project" ? environmentVariables : "",
+        resolveComposeProjectEnvironment(definition, {
+          services: environment.services,
+          projectEnvironment: project.env,
+          parameters,
+          loginCredentials: definition.requiresLoginCredentials
+            ? { username: loginUsername, password: loginPassword }
+            : undefined,
+        }),
+      ].join("\n");
       projectEnvironment = mergeDokployProjectEnv(
         projectEnvironment,
-        parseDokployEnvironmentEntries(environmentVariables),
+        parseDokployEnvironmentEntries(managedProjectEnvironment),
       );
       if (projectEnvironment !== project.env) {
         await updateDokployProjectEnv(projectId, projectEnvironment);
@@ -180,6 +224,17 @@ export async function createComposeAction(
                 definition.domain.httpsByDefault === true ||
                 formData.get("https") === "on",
             }
+          : undefined,
+      additionalDomains:
+        definition.id === "garage-with-webui"
+          ? [
+              {
+                host: s3Host,
+                serviceName: "garage",
+                port: 3900,
+                https: true,
+              },
+            ]
           : undefined,
     });
     if (deployAfterCreate) {

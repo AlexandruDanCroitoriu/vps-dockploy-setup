@@ -9,22 +9,32 @@ import {
 
 describe("repository application discovery", () => {
   it("returns the bundled repository application manifest without GitHub access", async () => {
-    await expect(getRepositoryApplications()).resolves.toEqual([
-      {
-        name: "01-infra-management",
-        path: "01-Apps/01-infra-management",
-        owner: "AlexandruDanCroitoriu",
-        repository: "vps-dockploy-setup",
-        branch: "main",
-      },
-    ]);
+    await expect(getRepositoryApplications()).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "01-infra-management" }),
+        expect.objectContaining({
+          name: "vendure-backend",
+          kind: "vendure-backend",
+        }),
+        expect.objectContaining({
+          name: "vendure-storefront",
+          kind: "vendure-storefront",
+          repeatable: true,
+        }),
+        expect.objectContaining({
+          name: "vendure-storefront-clean",
+          path: "01-Apps/02-Online-Store-Vendure/apps/storefront-clean",
+          kind: "vendure-storefront",
+          repeatable: true,
+        }),
+      ]),
+    );
   });
 
   it("returns the manifest without an error", async () => {
-    await expect(getRepositoryApplicationsResult()).resolves.toEqual({
-      applications: [expect.objectContaining({ name: "01-infra-management" })],
-      error: "",
-    });
+    const result = await getRepositoryApplicationsResult();
+    expect(result.error).toBe("");
+    expect(result.applications).toHaveLength(4);
   });
 
   it("detects a repository application anywhere on the instance", async () => {
@@ -52,6 +62,32 @@ describe("repository application discovery", () => {
         repository: application.repository,
         buildPath: `/${application.path}/`,
       }),
+    ).toBe(true);
+  });
+
+  it("allows repeatable Vendure storefront deployments", async () => {
+    const applications = await getRepositoryApplications();
+    const storefront = applications.find(
+      (application) => application.name === "vendure-storefront",
+    )!;
+
+    expect(
+      isRepositoryApplicationDeployed(storefront, [
+        { name: "shop-one", sourcePath: `/${storefront.path}` },
+      ]),
+    ).toBe(false);
+  });
+
+  it("recognizes the fixed Docker-backed Vendure application name", async () => {
+    const applications = await getRepositoryApplications();
+    const backend = applications.find(
+      (application) => application.kind === "vendure-backend",
+    )!;
+
+    expect(
+      isRepositoryApplicationDeployed(backend, [
+        { name: "vendure", sourcePath: null },
+      ]),
     ).toBe(true);
   });
 });

@@ -52,6 +52,12 @@ export async function createDokployRawCompose(input: {
     port: number;
     https: boolean;
   };
+  additionalDomains?: Array<{
+    host: string;
+    serviceName: string;
+    port: number;
+    https: boolean;
+  }>;
 }) {
   const created = await dokployPost<unknown>("compose.create", {
     name: input.name,
@@ -95,6 +101,17 @@ export async function createDokployRawCompose(input: {
         port: input.domain.port,
         https: input.domain.https,
         letsEncrypt: input.domain.https,
+      });
+    }
+    for (const domain of input.additionalDomains ?? []) {
+      await createDokployDomain({
+        type: "compose",
+        serviceId: composeId,
+        serviceName: domain.serviceName,
+        host: domain.host,
+        port: domain.port,
+        https: domain.https,
+        letsEncrypt: domain.https,
       });
     }
     return composeId;

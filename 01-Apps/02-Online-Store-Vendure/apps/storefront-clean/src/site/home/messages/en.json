@@ -1,0 +1,33 @@
+{
+  "Hero": {
+    "title": "Discover Quality",
+    "titleHighlight": "Products",
+    "subtitle": "Premium products, exceptional prices. Free shipping on orders over $50.",
+    "shopNow": "Shop Now",
+    "viewCollections": "View Collections"
+  },
+  "Home": {
+    "pageTitle": "Your One-Stop Shop",
+    "description": "Discover high-quality products at competitive prices. Shop now for the best deals on electronics, fashion, home goods, and more.",
+    "ogDescription": "Discover high-quality products at competitive prices. Shop now for the best deals.",
+    "collectionsTitle": "Collections",
+    "collectionsDescription": "Browse all our collections and find something made for you.",
+    "noCollections": "No collections are available yet.",
+    "noImage": "No image",
+    "whyShopWithUs": "Why Shop With Us",
+    "features": {
+      "highQuality": {
+        "title": "High Quality",
+        "description": "Premium products carefully selected for you"
+      },
+      "bestPrices": {
+        "title": "Best Prices",
+        "description": "Competitive pricing on all our products"
+      },
+      "fastDelivery": {
+        "title": "Fast Delivery",
+        "description": "Quick and reliable shipping worldwide"
+      }
+    }
+  }
+}

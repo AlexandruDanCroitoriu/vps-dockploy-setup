@@ -1,5 +1,7 @@
 import type {Metadata, Viewport} from "next";
 import Script from "next/script";
+import {connection} from "next/server";
+import {Suspense} from "react";
 import {hasLocale, NextIntlClientProvider} from "next-intl";
 import {Geist, Geist_Mono} from "next/font/google";
 import {getMessages, getTranslations, setRequestLocale} from "next-intl/server";
@@ -76,6 +78,29 @@ export const viewport: Viewport = {
     ],
 };
 
+async function RuntimeStorefront({
+    children,
+    locale,
+    messages,
+}: {
+    children: React.ReactNode;
+    locale: string;
+    messages: Awaited<ReturnType<typeof getMessages>>;
+}) {
+    await connection();
+
+    return (
+        <NextIntlClientProvider locale={locale} messages={messages}>
+            <ThemeProvider>
+                <Navbar />
+                {children}
+                <Footer/>
+                <Toaster/>
+            </ThemeProvider>
+        </NextIntlClientProvider>
+    );
+}
+
 export default async function LocaleLayout({children}: {children: React.ReactNode}) {
     const locale = await getRouteLocale();
 
@@ -104,14 +129,11 @@ export default async function LocaleLayout({children}: {children: React.ReactNod
                 suppressHydrationWarning
                 className={`${geistSans.variable} ${geistMono.variable} antialiased flex flex-col min-h-screen`}
             >
-                <NextIntlClientProvider locale={locale} messages={messages}>
-                    <ThemeProvider>
-                        <Navbar />
+                <Suspense fallback={null}>
+                    <RuntimeStorefront locale={locale} messages={messages}>
                         {children}
-                        <Footer/>
-                        <Toaster/>
-                    </ThemeProvider>
-                </NextIntlClientProvider>
+                    </RuntimeStorefront>
+                </Suspense>
             </body>
         </html>
     );

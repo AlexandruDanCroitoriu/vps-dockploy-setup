@@ -25,6 +25,7 @@ export function serializeInfraManagementEnvironment(input: {
   authSecret: string;
   nextAuthUrl: string;
   cloudflareApiToken: string;
+  resendApiKey: string;
 }) {
   return [
     environmentLine("INFRA_SERVICES_DEFAULT_USERNAME", input.username),
@@ -32,6 +33,7 @@ export function serializeInfraManagementEnvironment(input: {
     environmentLine("AUTH_SECRET", input.authSecret),
     environmentLine("NEXTAUTH_URL", input.nextAuthUrl),
     environmentLine("CLOUDFLARE_API_TOKEN", input.cloudflareApiToken),
+    environmentLine("RESEND_API_KEY", input.resendApiKey),
     environmentLine("PROJECT_BUILDS_ENABLED", "true"),
     environmentLine(
       "PROJECT_REPOSITORY_URL",

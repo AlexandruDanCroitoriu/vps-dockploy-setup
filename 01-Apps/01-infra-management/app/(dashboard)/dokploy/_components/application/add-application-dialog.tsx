@@ -25,7 +25,10 @@ import {
   submitProjectServiceCreation,
 } from "@/lib/project-events";
 
-import { generateApplicationDomainAction } from "../../_actions/applications";
+import {
+  generateApplicationDomainAction,
+  getVendureChannelsAction,
+} from "../../_actions/applications";
 import type { ActionState } from "../../_actions/shared";
 import { RepositoryApplicationDropdown } from "./repository-application-dropdown";
 
@@ -60,7 +63,10 @@ export function AddApplicationDialog({
   repositoryApplicationsError,
   rootDomain,
   deployedApplications,
+  vendureBackendDeployment,
   infraManagementImageAvailability,
+  vendureBackendImageAvailability,
+  vendureStorefrontImageAvailability,
 }: {
   projectId: string;
   environments: Array<{ environmentId: string; name: string }>;
@@ -69,10 +75,16 @@ export function AddApplicationDialog({
   repositoryApplicationsError: string;
   rootDomain: string;
   deployedApplications: RepositoryApplicationDeployment[];
+  vendureBackendDeployment?: RepositoryApplicationDeployment;
   infraManagementImageAvailability: {
     available: boolean;
     message: string;
   };
+  vendureBackendImageAvailability: { available: boolean; message: string };
+  vendureStorefrontImageAvailability: Record<
+    string,
+    { available: boolean; message: string }
+  >;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedApplication, setSelectedApplication] =
@@ -88,6 +100,13 @@ export function AddApplicationDialog({
   const [domainGenerationError, setDomainGenerationError] = useState("");
   const [domainGenerationPending, startDomainGeneration] = useTransition();
   const [state, setState] = useState(initialState);
+  const [vendureBackendId, setVendureBackendId] = useState("");
+  const [vendureChannels, setVendureChannels] = useState<
+    Array<{ id: string; code: string; token: string }>
+  >([]);
+  const [vendureChannelToken, setVendureChannelToken] = useState("");
+  const [vendureChannelsError, setVendureChannelsError] = useState("");
+  const [vendureChannelsPending, startVendureChannels] = useTransition();
   const latestRequestIdRef = useRef("");
   const router = useRouter();
 
@@ -149,18 +168,66 @@ export function AddApplicationDialog({
     if (!watchPathsEdited) setWatchPaths(watchPathFor(value));
   }
 
-  function selectApplication(application: RepositoryApplication) {
+  function selectApplication(
+    application: RepositoryApplication,
+    parentDeployment?: RepositoryApplicationDeployment,
+  ) {
     const path = normalizeBuildPath(application.path);
     setSelectedApplication(application);
     setBuildType("nixpacks");
     setBuildPath(path);
     setWatchPaths(watchPathFor(path));
     setWatchPathsEdited(false);
-    setApplicationName(application.name);
-    setDomainHost("");
+    const vendureBackend = application.kind === "vendure-backend";
+    setApplicationName(
+      vendureBackend
+        ? "vendure"
+        : (application.deploymentName ?? application.name),
+    );
+    const storefrontFolder = application.path.split("/").at(-1) ?? "storefront";
+    setDomainHost(
+      rootDomain && application.kind === "vendure-storefront"
+        ? `${storefrontFolder}.${rootDomain}`
+        : vendureBackend && rootDomain
+          ? `vendure.${rootDomain}`
+          : "",
+    );
     setDomainSubdomain("");
     setDomainGenerationError("");
+    const selectedVendureBackend =
+      application.kind === "vendure-storefront"
+        ? vendureBackendDeployment
+        : parentDeployment;
+    setVendureBackendId(selectedVendureBackend?.id ?? "");
+    setVendureChannels([]);
+    setVendureChannelToken("");
+    setVendureChannelsError("");
     setIsOpen(true);
+    if (
+      application.kind === "vendure-storefront" &&
+      selectedVendureBackend?.id
+    ) {
+      startVendureChannels(async () => {
+        const result = await getVendureChannelsAction(
+          projectId,
+          selectedVendureBackend.id!,
+        );
+        if (result.status === "error") {
+          setVendureChannelsError(result.message);
+          return;
+        }
+        setVendureChannels(result.channels);
+        const defaultChannel =
+          result.channels.find(
+            (channel) => channel.code.toLowerCase() === "__default_channel__",
+          ) ??
+          result.channels.find((channel) =>
+            channel.code.toLowerCase().includes("default"),
+          ) ??
+          result.channels[0];
+        setVendureChannelToken(defaultChannel?.token ?? "");
+      });
+    }
   }
 
   function generateDomain() {
@@ -177,6 +244,9 @@ export function AddApplicationDialog({
 
   const usesInfraManagementDefaults =
     selectedApplication?.name.toLowerCase() === "01-infra-management";
+  const usesVendurePreset = Boolean(selectedApplication?.kind);
+  const usesVendureStorefront =
+    selectedApplication?.kind === "vendure-storefront";
 
   return (
     <>
@@ -185,7 +255,10 @@ export function AddApplicationDialog({
         applications={repositoryApplications}
         applicationsError={repositoryApplicationsError}
         deployedApplications={deployedApplications}
+        vendureBackendDeployment={vendureBackendDeployment}
         infraManagementImageAvailability={infraManagementImageAvailability}
+        vendureBackendImageAvailability={vendureBackendImageAvailability}
+        vendureStorefrontImageAvailability={vendureStorefrontImageAvailability}
         onSelect={selectApplication}
       />
 
@@ -197,9 +270,15 @@ export function AddApplicationDialog({
           description={
             usesInfraManagementDefaults
               ? "Create the service from the latest image in Zot and configure its domain."
-              : "Create the service and configure its source and build settings."
+              : selectedApplication.kind === "vendure-backend"
+                ? "Deploy Vendure using database and storage variables inherited from this project."
+                : selectedApplication.kind === "vendure-storefront"
+                  ? "Deploy a storefront connected to a channel on the existing Vendure backend."
+                  : "Create the service and configure its source and build settings."
           }
-          width={usesInfraManagementDefaults ? "compact" : "lg"}
+          width={
+            usesInfraManagementDefaults || usesVendurePreset ? "compact" : "lg"
+          }
           footer={
             <div className="flex justify-end gap-2">
               <Button
@@ -210,7 +289,15 @@ export function AddApplicationDialog({
               >
                 Cancel
               </Button>
-              <Button type="submit" form="create-application-form" size="xs">
+              <Button
+                type="submit"
+                form="create-application-form"
+                size="xs"
+                disabled={
+                  usesVendureStorefront &&
+                  (vendureChannelsPending || vendureChannels.length === 0)
+                }
+              >
                 Create application
               </Button>
             </div>
@@ -220,7 +307,7 @@ export function AddApplicationDialog({
             id="create-application-form"
             onSubmit={submitApplication}
             className={
-              usesInfraManagementDefaults
+              usesInfraManagementDefaults || usesVendurePreset
                 ? "flex flex-col gap-4 px-5 py-4"
                 : "grid gap-4 px-5 py-4 sm:grid-cols-2"
             }
@@ -239,6 +326,58 @@ export function AddApplicationDialog({
               name="repository"
               value={selectedApplication.repository}
             />
+            {usesVendurePreset && (
+              <>
+                <input type="hidden" name="buildType" value="nixpacks" />
+                <input type="hidden" name="buildPath" value={buildPath} />
+                <input type="hidden" name="watchPaths" value={watchPaths} />
+                <input
+                  type="hidden"
+                  name="vendureBackendId"
+                  value={vendureBackendId}
+                />
+              </>
+            )}
+
+            {usesVendureStorefront && (
+              <FormField label="Vendure channel" htmlFor="vendure-channel">
+                <select
+                  id="vendure-channel"
+                  name="vendureChannelToken"
+                  required
+                  value={vendureChannelToken}
+                  onChange={(event) =>
+                    setVendureChannelToken(event.target.value)
+                  }
+                  disabled={
+                    vendureChannelsPending || vendureChannels.length === 0
+                  }
+                  className={inputClassName}
+                >
+                  {vendureChannelsPending || vendureChannels.length === 0 ? (
+                    <option value="">
+                      {vendureChannelsPending
+                        ? "Loading channels…"
+                        : "No channels available"}
+                    </option>
+                  ) : (
+                    vendureChannels.map((channel) => (
+                      <option key={channel.id} value={channel.token}>
+                        {channel.code}
+                      </option>
+                    ))
+                  )}
+                </select>
+                {vendureChannelsError && (
+                  <p
+                    className="mt-1 text-xs text-red-600 dark:text-red-400"
+                    role="alert"
+                  >
+                    {vendureChannelsError}
+                  </p>
+                )}
+              </FormField>
+            )}
 
             {environments.length === 1 ? (
               <input
@@ -266,7 +405,7 @@ export function AddApplicationDialog({
               </FormField>
             )}
 
-            {usesInfraManagementDefaults ? (
+            {usesInfraManagementDefaults || usesVendurePreset ? (
               <>
                 <input type="hidden" name="name" value={applicationName} />
                 <input
@@ -279,9 +418,13 @@ export function AddApplicationDialog({
                   name="branch"
                   value={selectedApplication.branch}
                 />
-                <input type="hidden" name="buildType" value="nixpacks" />
-                <input type="hidden" name="buildPath" value={buildPath} />
-                <input type="hidden" name="watchPaths" value={watchPaths} />
+                {!usesVendurePreset && (
+                  <>
+                    <input type="hidden" name="buildType" value="nixpacks" />
+                    <input type="hidden" name="buildPath" value={buildPath} />
+                    <input type="hidden" name="watchPaths" value={watchPaths} />
+                  </>
+                )}
               </>
             ) : (
               <>
@@ -336,59 +479,65 @@ export function AddApplicationDialog({
                   />
                 </FormField>
 
-                <FormField label="Build type" htmlFor="app-build-type">
-                  <select
-                    id="app-build-type"
-                    name="buildType"
-                    value={buildType}
-                    onChange={(event) =>
-                      setBuildType(
-                        event.target.value as DokployApplicationBuildType,
-                      )
-                    }
-                    className={inputClassName}
+                {!usesVendurePreset && (
+                  <FormField label="Build type" htmlFor="app-build-type">
+                    <select
+                      id="app-build-type"
+                      name="buildType"
+                      value={buildType}
+                      onChange={(event) =>
+                        setBuildType(
+                          event.target.value as DokployApplicationBuildType,
+                        )
+                      }
+                      className={inputClassName}
+                    >
+                      {buildTypes.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </FormField>
+                )}
+
+                {!usesVendurePreset && (
+                  <FormField label="Build path" htmlFor="app-build-path">
+                    <input
+                      id="app-build-path"
+                      name="buildPath"
+                      required
+                      value={buildPath}
+                      onChange={(event) => updateBuildPath(event.target.value)}
+                      onBlur={() =>
+                        updateBuildPath(normalizeBuildPath(buildPath))
+                      }
+                      placeholder="/01-Apps/02-personal-site"
+                      className={inputClassName}
+                    />
+                  </FormField>
+                )}
+
+                {!usesVendurePreset && (
+                  <FormField
+                    label="Watch paths"
+                    htmlFor="app-watch-paths"
+                    optional
                   >
-                    {buildTypes.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </FormField>
-
-                <FormField label="Build path" htmlFor="app-build-path">
-                  <input
-                    id="app-build-path"
-                    name="buildPath"
-                    required
-                    value={buildPath}
-                    onChange={(event) => updateBuildPath(event.target.value)}
-                    onBlur={() =>
-                      updateBuildPath(normalizeBuildPath(buildPath))
-                    }
-                    placeholder="/01-Apps/02-personal-site"
-                    className={inputClassName}
-                  />
-                </FormField>
-
-                <FormField
-                  label="Watch paths"
-                  htmlFor="app-watch-paths"
-                  optional
-                >
-                  <textarea
-                    id="app-watch-paths"
-                    name="watchPaths"
-                    value={watchPaths}
-                    onChange={(event) => {
-                      setWatchPathsEdited(true);
-                      setWatchPaths(event.target.value);
-                    }}
-                    rows={2}
-                    placeholder="01-Apps/02-personal-site/**"
-                    className={`${inputClassName} resize-y`}
-                  />
-                </FormField>
+                    <textarea
+                      id="app-watch-paths"
+                      name="watchPaths"
+                      value={watchPaths}
+                      onChange={(event) => {
+                        setWatchPathsEdited(true);
+                        setWatchPaths(event.target.value);
+                      }}
+                      rows={2}
+                      placeholder="01-Apps/02-personal-site/**"
+                      className={`${inputClassName} resize-y`}
+                    />
+                  </FormField>
+                )}
 
                 {buildType === "dockerfile" && (
                   <>
@@ -472,11 +621,18 @@ export function AddApplicationDialog({
                 optional
                 className="col-span-full"
               >
-                <div className="mt-1.5 grid w-full grid-cols-[minmax(0,1fr)_auto] gap-2">
+                <div
+                  className={
+                    usesVendurePreset
+                      ? "mt-1.5 w-full"
+                      : "mt-1.5 grid w-full grid-cols-[minmax(0,1fr)_auto] gap-2"
+                  }
+                >
                   <input
                     id="app-host"
                     name="host"
                     type="text"
+                    required={usesVendurePreset}
                     value={domainHost}
                     onChange={(event) => {
                       setDomainHost(event.target.value);
@@ -485,17 +641,19 @@ export function AddApplicationDialog({
                     placeholder="app.example.com"
                     className={`${inputClassName} !mt-0 min-w-0`}
                   />
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    disabled={
-                      domainGenerationPending || !applicationName.trim()
-                    }
-                    onClick={generateDomain}
-                    className="h-full shrink-0"
-                  >
-                    {domainGenerationPending ? "Generating…" : "Generate"}
-                  </Button>
+                  {!usesVendurePreset && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={
+                        domainGenerationPending || !applicationName.trim()
+                      }
+                      onClick={generateDomain}
+                      className="h-full shrink-0"
+                    >
+                      {domainGenerationPending ? "Generating…" : "Generate"}
+                    </Button>
+                  )}
                 </div>
                 {domainGenerationError && (
                   <p
@@ -508,7 +666,7 @@ export function AddApplicationDialog({
               </FormField>
             )}
 
-            {usesInfraManagementDefaults ? (
+            {usesInfraManagementDefaults || usesVendurePreset ? (
               <input type="hidden" name="port" value="3000" />
             ) : (
               <FormField label="Container port" htmlFor="app-port">
@@ -534,7 +692,7 @@ export function AddApplicationDialog({
             )}
 
             <div className="sm:col-span-2">
-              {usesInfraManagementDefaults ? (
+              {usesInfraManagementDefaults || usesVendurePreset ? (
                 <input type="hidden" name="description" value="" />
               ) : (
                 <FormField
@@ -551,7 +709,7 @@ export function AddApplicationDialog({
                   />
                 </FormField>
               )}
-              {usesInfraManagementDefaults ? (
+              {usesInfraManagementDefaults || usesVendurePreset ? (
                 <input type="hidden" name="autoDeploy" value="on" />
               ) : (
                 <label className="mt-4 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
@@ -565,7 +723,7 @@ export function AddApplicationDialog({
                 className="mt-4"
               />
               <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                {usesInfraManagementDefaults
+                {usesInfraManagementDefaults || usesVendurePreset
                   ? "The domain targets the application on port 3000. You can also change domains after creation."
                   : "The port is used when a domain hostname is provided. You can also add or change domains after creation."}
               </p>

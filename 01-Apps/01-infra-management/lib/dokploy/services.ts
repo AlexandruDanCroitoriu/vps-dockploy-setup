@@ -1,7 +1,12 @@
 import "server-only";
 
 import { cache } from "react";
-import { dokployGet, dokployGetFresh, dokployPost } from "./client";
+import {
+  dokployGet,
+  dokployGetFresh,
+  dokployPost,
+  dokployPostWithConfiguration,
+} from "./client";
 import { SERVICE_ENDPOINTS } from "./constants";
 import {
   containersFromResponse,
@@ -11,7 +16,7 @@ import {
   serviceStatus,
   stringValue,
 } from "./normalizers";
-import { getDokployProject } from "./projects";
+import { getDokployProject, getFreshDokployProject } from "./projects";
 import type { DokployService, DokployServiceType } from "./types";
 
 async function withServiceDetails(
@@ -149,6 +154,18 @@ export async function getDokployService(
   );
 }
 
+export async function getFreshDokployService(
+  projectId: string,
+  type: DokployServiceType,
+  serviceId: string,
+) {
+  const project = await getFreshDokployProject(projectId);
+  const service = project?.environments
+    .flatMap((environment) => environment.services)
+    .find((candidate) => candidate.id === serviceId && candidate.type === type);
+  return service ? withServiceDetails(service, dokployGetFresh) : null;
+}
+
 export async function updateDokployServiceEnv(
   type: DokployServiceType,
   serviceId: string,
@@ -161,12 +178,36 @@ export async function updateDokployServiceEnv(
   });
 }
 
+export async function updateDokployServiceEnvWithConfiguration(
+  configuration: { baseUrl: string; apiKey: string },
+  type: DokployServiceType,
+  serviceId: string,
+  env: string,
+) {
+  const endpoint = SERVICE_ENDPOINTS[type];
+  await dokployPostWithConfiguration(configuration, `${endpoint.path}.update`, {
+    [endpoint.idParameter]: serviceId,
+    env,
+  });
+}
+
 export async function deployDokployService(
   type: DokployServiceType,
   serviceId: string,
 ) {
   const endpoint = SERVICE_ENDPOINTS[type];
   await dokployPost(`${endpoint.path}.deploy`, {
+    [endpoint.idParameter]: serviceId,
+  });
+}
+
+export async function deployDokployServiceWithConfiguration(
+  configuration: { baseUrl: string; apiKey: string },
+  type: DokployServiceType,
+  serviceId: string,
+) {
+  const endpoint = SERVICE_ENDPOINTS[type];
+  await dokployPostWithConfiguration(configuration, `${endpoint.path}.deploy`, {
     [endpoint.idParameter]: serviceId,
   });
 }

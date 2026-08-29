@@ -23,9 +23,15 @@ describe("local repository project discovery", () => {
       path.join(tmpdir(), "infra-management-projects-"),
     );
     await mkdir(path.join(appsDirectory, "02-api"));
+    await mkdir(path.join(appsDirectory, "02-api", "apps"));
+    await mkdir(path.join(appsDirectory, "02-api", "apps", "server"));
     await mkdir(path.join(appsDirectory, "01-web"));
     await mkdir(path.join(appsDirectory, ".ignored"));
     await writeFile(path.join(appsDirectory, "01-web", "Dockerfile"), "");
+    await writeFile(
+      path.join(appsDirectory, "02-api", "apps", "server", "Dockerfile"),
+      "",
+    );
 
     await expect(getRepositoryProjects(appsDirectory)).resolves.toEqual([
       {
@@ -33,13 +39,66 @@ describe("local repository project discovery", () => {
         path: "01-Apps/01-web",
         imageRepository: "web",
         hasDockerfile: true,
+        nestedDockerfiles: [],
+        imageTargets: [
+          {
+            id: "default",
+            name: "01-web",
+            contextPath: ".",
+            dockerfilePath: "Dockerfile",
+            imageRepository: "web",
+            available: true,
+          },
+        ],
       },
       {
         name: "02-api",
         path: "01-Apps/02-api",
         imageRepository: "api",
         hasDockerfile: false,
+        nestedDockerfiles: ["apps/server/Dockerfile"],
+        imageTargets: [
+          {
+            id: "server",
+            name: "server",
+            contextPath: "apps/server",
+            dockerfilePath: "Dockerfile",
+            imageRepository: "api-server",
+            available: true,
+          },
+        ],
       },
     ]);
+  });
+
+  it("uses one Vendure backend target for the server and worker", async () => {
+    const appsDirectory = await mkdtemp(
+      path.join(tmpdir(), "infra-management-vendure-"),
+    );
+    const project = path.join(appsDirectory, "02-Online-Store-Vendure");
+    for (const app of ["server", "storefront", "storefront-clean"]) {
+      await mkdir(path.join(project, "apps", app), { recursive: true });
+      await writeFile(path.join(project, "apps", app, "Dockerfile"), "");
+    }
+
+    const [vendure] = await getRepositoryProjects(appsDirectory);
+    expect(vendure.imageTargets).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "server",
+        imageRepository: "online-store-vendure-server",
+      }),
+      expect.objectContaining({
+        id: "storefront",
+        imageRepository: "online-store-vendure-storefront",
+      }),
+      expect.objectContaining({
+        id: "storefront-clean",
+        imageRepository: "online-store-vendure-storefront-clean",
+      }),
+    ]));
+    expect(vendure.imageTargets).toHaveLength(3);
+    expect(vendure.imageTargets).not.toContainEqual(
+      expect.objectContaining({ id: "worker" }),
+    );
   });
 });

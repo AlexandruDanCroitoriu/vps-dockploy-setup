@@ -31,6 +31,7 @@ describe("local Docker image validation", () => {
           imageId: "sha256:old",
           createdAt: "2026-08-23T10:00:00Z",
           current: false,
+          digests: [],
         },
         {
           name: "infra-management",
@@ -38,6 +39,7 @@ describe("local Docker image validation", () => {
           imageId: "sha256:new",
           createdAt: "2026-08-24T10:00:00Z",
           current: false,
+          digests: [],
         },
         {
           name: "infra-management",
@@ -45,6 +47,7 @@ describe("local Docker image validation", () => {
           imageId: "sha256:new",
           createdAt: "2026-08-24T10:00:00Z",
           current: false,
+          digests: [],
         },
       ]),
     ).toEqual([

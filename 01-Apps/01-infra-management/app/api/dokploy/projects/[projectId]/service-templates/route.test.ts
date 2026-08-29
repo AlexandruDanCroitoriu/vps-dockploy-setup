@@ -5,20 +5,39 @@ vi.mock("@/auth", () => ({ authOptions: {} }));
 vi.mock("@/app/(dashboard)/dokploy/_actions/databases", () => ({
   createDatabaseAction: vi.fn(),
 }));
+vi.mock("@/app/(dashboard)/dokploy/_actions/applications", () => ({
+  createApplicationAction: vi.fn(),
+}));
 vi.mock("@/app/(dashboard)/dokploy/_actions/composes", () => ({
   createComposeAction: vi.fn(),
+}));
+vi.mock("@/lib/zot/vendure-backend-image", () => ({
+  getVendureBackendZotImage: vi.fn(),
+}));
+vi.mock("@/lib/zot/vendure-storefront-image", () => ({
+  getVendureStorefrontZotImage: vi.fn(),
 }));
 vi.mock("@/lib/dokploy", () => ({
   getActiveDokployConfiguration: vi.fn(),
   getDokployProject: vi.fn(),
+  getFreshDokployProject: vi.fn(),
+  isValidHostname: (value: string) =>
+    value === "example.com" || value.endsWith(".example.com"),
+  mergeDokployProjectEnv: vi.fn((current: string) => current),
+  parseDokployEnvironmentEntries: vi.fn(() => ({})),
+  updateDokployProjectEnv: vi.fn(),
 }));
 
 import { getServerSession } from "next-auth";
+import { createApplicationAction } from "@/app/(dashboard)/dokploy/_actions/applications";
 import { createComposeAction } from "@/app/(dashboard)/dokploy/_actions/composes";
 import { createDatabaseAction } from "@/app/(dashboard)/dokploy/_actions/databases";
+import { getVendureBackendZotImage } from "@/lib/zot/vendure-backend-image";
+import { getVendureStorefrontZotImage } from "@/lib/zot/vendure-storefront-image";
 import {
   getActiveDokployConfiguration,
   getDokployProject,
+  getFreshDokployProject,
 } from "@/lib/dokploy";
 import { POST } from "./route";
 
@@ -48,6 +67,28 @@ describe("service template route", () => {
       vpsPassword: "root-password",
       defaultServiceUsername: "operator",
       defaultServicePassword: "login-secret",
+    });
+    vi.mocked(getFreshDokployProject).mockResolvedValue({
+      projectId: "project-1",
+      name: "Project",
+      description: null,
+      createdAt: "",
+      env: "",
+      environments: [
+        { environmentId: "environment-1", name: "production", services: [] },
+      ],
+    });
+    vi.mocked(getVendureBackendZotImage).mockResolvedValue({
+      available: true,
+      image: "zot.example.com/online-store-vendure-server:latest",
+      registry: {} as never,
+      message: "",
+    });
+    vi.mocked(getVendureStorefrontZotImage).mockResolvedValue({
+      available: true,
+      image: "zot.example.com/storefront:latest",
+      registry: {} as never,
+      message: "",
     });
   });
 
@@ -101,6 +142,7 @@ describe("service template route", () => {
     expect(garageForm.get("loginUsername")).toBe("operator");
     expect(garageForm.get("loginPassword")).toBe("login-secret");
     expect(garageForm.get("host")).toBe("garage.example.com");
+    expect(garageForm.get("s3Host")).toBe("s3.example.com");
     expect(garageForm.get("deployAfterCreate")).toBe("on");
     await expect(response.json()).resolves.toMatchObject({
       services: [
@@ -151,6 +193,96 @@ describe("service template route", () => {
     expect(response.status).toBe(409);
     expect(createDatabaseAction).not.toHaveBeenCalled();
     expect(createComposeAction).not.toHaveBeenCalled();
+  });
+
+  it("creates the complete Vendure stack in dependency order", async () => {
+    vi.mocked(createDatabaseAction).mockResolvedValue({
+      status: "success",
+      message: "created",
+      createdService: { id: "postgres-1", type: "postgres" },
+    });
+    vi.mocked(createComposeAction).mockResolvedValue({
+      status: "success",
+      message: "created",
+      createdService: { id: "garage-1", type: "compose" },
+    });
+    vi.mocked(createApplicationAction)
+      .mockResolvedValueOnce({
+        status: "success",
+        message: "created",
+        createdService: { id: "vendure-1", type: "applications" },
+      })
+      .mockResolvedValueOnce({
+        status: "success",
+        message: "created",
+        createdService: { id: "storefront-clean-1", type: "applications" },
+      })
+      .mockResolvedValueOnce({
+        status: "success",
+        message: "created",
+        createdService: { id: "storefront-1", type: "applications" },
+      });
+
+    const response = await POST(
+      new Request("http://localhost", {
+        method: "POST",
+        body: JSON.stringify({ templateId: "vendure-stack" }),
+      }),
+      { params: Promise.resolve({ projectId: "project-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(createDatabaseAction).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(createDatabaseAction).mock.calls[0][2].get("type")).toBe(
+      "postgres",
+    );
+    expect(createComposeAction).toHaveBeenCalledTimes(1);
+    expect(
+      vi.mocked(createComposeAction).mock.calls[0][3].get("definitionId"),
+    ).toBe("garage-with-webui");
+    expect(createApplicationAction).toHaveBeenCalledTimes(3);
+    const backendForm = vi.mocked(createApplicationAction).mock.calls[0][2];
+    const cleanForm = vi.mocked(createApplicationAction).mock.calls[1][2];
+    const storefrontForm = vi.mocked(createApplicationAction).mock.calls[2][2];
+    expect(backendForm.get("buildPath")).toBe(
+      "/01-Apps/02-Online-Store-Vendure/apps/server",
+    );
+    expect(cleanForm.get("vendureBackendId")).toBe("vendure-1");
+    expect(cleanForm.get("vendureTemplateProvisioning")).toBe("on");
+    expect(storefrontForm.get("vendureChannelToken")).toBe(
+      backendForm.get("vendureChannelToken"),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      services: [
+        { id: "postgres-1", name: "postgres" },
+        { id: "garage-1", name: "Garage with UI" },
+        { id: "vendure-1", name: "vendure" },
+        { id: "storefront-clean-1", name: "vendure-storefront-clean" },
+        { id: "storefront-1", name: "vendure-storefront" },
+      ],
+    });
+  });
+
+  it("does not create partial infrastructure when a Vendure image is unavailable", async () => {
+    vi.mocked(getVendureBackendZotImage).mockResolvedValue({
+      available: false,
+      image: "",
+      registry: null,
+      message: "Zot does not contain the Vendure backend image.",
+    });
+
+    const response = await POST(
+      new Request("http://localhost", {
+        method: "POST",
+        body: JSON.stringify({ templateId: "vendure-stack" }),
+      }),
+      { params: Promise.resolve({ projectId: "project-1" }) },
+    );
+
+    expect(response.status).toBe(409);
+    expect(createDatabaseAction).not.toHaveBeenCalled();
+    expect(createComposeAction).not.toHaveBeenCalled();
+    expect(createApplicationAction).not.toHaveBeenCalled();
   });
 
   it("rejects the removed standalone Garage template", async () => {

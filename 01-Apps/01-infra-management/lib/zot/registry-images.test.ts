@@ -5,6 +5,7 @@ vi.mock("server-only", () => ({}));
 import {
   deleteZotRegistryImage,
   getFreshZotRegistryImages,
+  getZotRegistryImageConfigDigest,
   getZotRegistryImages,
   invalidateZotRegistryMemoryState,
   normalizeZotRegistryImages,
@@ -127,6 +128,31 @@ describe("Zot registry image normalization", () => {
     await getFreshZotRegistryImages(registry, "infra-management");
     await getFreshZotRegistryImages(registry, "infra-management");
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("loads the image config digest used to match a local Docker image", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ config: { digest: "sha256:local-image-id" } }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      getZotRegistryImageConfigDigest(
+        {
+          host: "zot.example.com",
+          username: "operator",
+          password: "registry-password",
+        },
+        "infra-management",
+        "latest",
+      ),
+    ).resolves.toBe("sha256:local-image-id");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://zot.example.com/v2/infra-management/manifests/latest",
+      expect.objectContaining({ cache: "no-store" }),
+    );
   });
 
   it("removes the current tag before a replacement image is pushed", async () => {

@@ -14,6 +14,9 @@ import {
 import { DatabaseCredentials } from "../database/database-credentials";
 import { EnvironmentVariableEditor } from "../environment/environment-variable-editor";
 import { ServiceLifecycleButtons } from "./service-lifecycle-buttons";
+import { getServiceDomainHref } from "./service-domain-href";
+
+export { getServiceDomainHref } from "./service-domain-href";
 
 const serviceStatusStyles = {
   running: { label: "Running", dot: "bg-emerald-500" },
@@ -87,22 +90,12 @@ export function ServiceCard({
             )}
           </p>
         </div>
-        <p className="truncate text-xs text-gray-500 dark:text-gray-400">
-          {isDatabase ? (
-            <>Database · {status.label}</>
-          ) : (
-            <>
-              {getServiceTypeLabel(service.type)}
-              {` · ${status.label}`}
-            </>
-          )}
-        </p>
         {domains.length > 0 && (
           <div className="mt-1 flex min-w-0 flex-wrap gap-x-3 gap-y-1">
             {domains.map((domain) => (
               <a
                 key={domain.domainId}
-                href={`${domain.https ? "https" : "http"}://${domain.host}`}
+                href={getServiceDomainHref(service, domain)}
                 target="_blank"
                 rel="noopener noreferrer"
                 title={`Open ${domain.host}`}

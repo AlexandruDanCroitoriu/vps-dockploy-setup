@@ -27,6 +27,8 @@ export type ComposeServiceDefinition = Readonly<{
     string | ((context: ComposeServiceDefinitionContext) => string);
   serviceEnvironmentVariables?:
     string | ((context: ComposeServiceDefinitionContext) => string);
+  projectEnvironmentVariables?:
+    string | ((context: ComposeServiceDefinitionContext) => string);
   environmentTarget?: "service" | "project";
   requiresLoginCredentials?: boolean;
   maxPerInstance?: number;
@@ -104,16 +106,30 @@ export function resolveComposeServiceReferences(
   return typeof references === "function" ? references(context) : references;
 }
 
+export function resolveComposeProjectEnvironment(
+  definition: ComposeServiceDefinition,
+  context: ComposeServiceDefinitionContext,
+) {
+  const projectEnvironment = definition.projectEnvironmentVariables;
+  if (!projectEnvironment) return "";
+  return typeof projectEnvironment === "function"
+    ? projectEnvironment(context)
+    : projectEnvironment;
+}
+
 export function resolveComposeProjectEnvironmentKeys(
   definition: ComposeServiceDefinition,
   context: ComposeServiceDefinitionContext,
 ) {
-  if (definition.environmentTarget !== "project") return new Set<string>();
+  const environments = [
+    definition.environmentTarget === "project"
+      ? resolveComposeServiceEnvironment(definition, context)
+      : "",
+    resolveComposeProjectEnvironment(definition, context),
+  ];
   return new Set(
-    Object.keys(
-      parseDokployEnvironmentEntries(
-        resolveComposeServiceEnvironment(definition, context),
-      ),
+    environments.flatMap((environment) =>
+      Object.keys(parseDokployEnvironmentEntries(environment)),
     ),
   );
 }

@@ -12,6 +12,11 @@ export function buildGarageEnvironment(
   loginPassword = randomBytes(24).toString("base64url"),
   loginUsername = "admin",
   capacityGb = 20,
+  vendureStorage?: Readonly<{
+    bucket: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+  }>,
 ) {
   return [
     environmentLine("GARAGE_RPC_SECRET", randomBytes(32).toString("hex")),
@@ -25,6 +30,19 @@ export function buildGarageEnvironment(
       "GARAGE_CAPACITY_BYTES",
       String(capacityGb * 1_000_000_000),
     ),
+    ...(vendureStorage
+      ? [
+          environmentLine("GARAGE_VENDURE_BUCKET", vendureStorage.bucket),
+          environmentLine(
+            "GARAGE_VENDURE_ACCESS_KEY_ID",
+            vendureStorage.accessKeyId,
+          ),
+          environmentLine(
+            "GARAGE_VENDURE_SECRET_ACCESS_KEY",
+            vendureStorage.secretAccessKey,
+          ),
+        ]
+      : []),
   ].join("\n");
 }
 
@@ -77,11 +95,14 @@ export const garageService = {
     environment:
       GARAGE_ADMIN_TOKEN: \${GARAGE_ADMIN_TOKEN}
       GARAGE_CAPACITY_BYTES: \${GARAGE_CAPACITY_BYTES}
+      GARAGE_VENDURE_BUCKET: \${GARAGE_VENDURE_BUCKET}
+      GARAGE_VENDURE_ACCESS_KEY_ID: \${GARAGE_VENDURE_ACCESS_KEY_ID}
+      GARAGE_VENDURE_SECRET_ACCESS_KEY: \${GARAGE_VENDURE_SECRET_ACCESS_KEY}
     entrypoint: ["python"]
     command:
       - "-c"
       - |
-        import json, os, time, urllib.request
+        import json, os, time, urllib.error, urllib.parse, urllib.request
         base = "http://garage:3903"
         headers = {"Authorization": "Bearer " + os.environ["GARAGE_ADMIN_TOKEN"]}
         def request(path, body=None):
@@ -89,6 +110,13 @@ export const garageService = {
             req = urllib.request.Request(base + path, data=data, headers={**headers, "Content-Type": "application/json"})
             with urllib.request.urlopen(req, timeout=5) as response:
                 return json.load(response)
+        def find(path):
+            try:
+                return request(path)
+            except urllib.error.HTTPError as error:
+                if error.code == 404:
+                    return None
+                raise
         for attempt in range(60):
             try:
                 status = request("/v2/GetClusterStatus")
@@ -105,6 +133,16 @@ export const garageService = {
                 request("/v2/UpdateClusterLayout", {"parameters": None, "roles": [{"id": node, "zone": "local", "capacity": int(os.environ["GARAGE_CAPACITY_BYTES"]), "tags": []}]})
                 layout = request("/v2/GetClusterLayout")
             request("/v2/ApplyClusterLayout", {"version": layout["version"] + 1})
+        access_key_id = os.environ["GARAGE_VENDURE_ACCESS_KEY_ID"]
+        secret_access_key = os.environ["GARAGE_VENDURE_SECRET_ACCESS_KEY"]
+        bucket_alias = os.environ["GARAGE_VENDURE_BUCKET"]
+        key = find("/v2/GetKeyInfo?id=" + urllib.parse.quote(access_key_id))
+        if key is None:
+            request("/v2/ImportKey", {"name": "vendure", "accessKeyId": access_key_id, "secretAccessKey": secret_access_key})
+        bucket = find("/v2/GetBucketInfo?globalAlias=" + urllib.parse.quote(bucket_alias))
+        if bucket is None:
+            bucket = request("/v2/CreateBucket", {"globalAlias": bucket_alias})
+        request("/v2/AllowBucketKey", {"bucketId": bucket["id"], "accessKeyId": access_key_id, "permissions": {"read": True, "write": True, "owner": True}})
 
 configs:
   garage-config:
@@ -136,7 +174,28 @@ volumes:
       loginCredentials?.password,
       loginCredentials?.username,
       Number(parameters?.garageCapacityGb || 20),
+      parameters?.s3Bucket &&
+        parameters.s3AccessKeyId &&
+        parameters.s3SecretAccessKey
+        ? {
+            bucket: parameters.s3Bucket,
+            accessKeyId: parameters.s3AccessKeyId,
+            secretAccessKey: parameters.s3SecretAccessKey,
+          }
+        : undefined,
     ),
+  projectEnvironmentVariables: ({ parameters }) =>
+    [
+      environmentLine("ASSET_URL_PREFIX", parameters?.assetUrlPrefix ?? ""),
+      environmentLine("S3_ENDPOINT", parameters?.s3Endpoint ?? ""),
+      environmentLine("S3_REGION", "garage"),
+      environmentLine("S3_BUCKET", parameters?.s3Bucket ?? ""),
+      environmentLine("S3_ACCESS_KEY_ID", parameters?.s3AccessKeyId ?? ""),
+      environmentLine(
+        "S3_SECRET_ACCESS_KEY",
+        parameters?.s3SecretAccessKey ?? "",
+      ),
+    ].join("\n"),
   requiresLoginCredentials: true,
   parameterNames: ["garageCapacityGb"],
   domain: {

@@ -316,6 +316,27 @@ export function AddComposeDialog({
                 )}
               </div>
             )}
+            {selectedDefinition.supportsGarageCapacity && (
+              <FormField
+                label="S3 API domain hostname"
+                htmlFor="compose-garage-s3-host"
+              >
+                <input
+                  id="compose-garage-s3-host"
+                  name="s3Host"
+                  type="text"
+                  required
+                  autoComplete="off"
+                  placeholder="s3.example.com"
+                  defaultValue={rootDomain ? `s3.${rootDomain}` : ""}
+                  className={inputClassName}
+                />
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  HTTPS endpoint for Garage&apos;s S3-compatible API on port
+                  3900.
+                </p>
+              </FormField>
+            )}
             <DeployAfterCreateOption
               checked={deployAfterCreate}
               onChange={(event) => setDeployAfterCreate(event.target.checked)}

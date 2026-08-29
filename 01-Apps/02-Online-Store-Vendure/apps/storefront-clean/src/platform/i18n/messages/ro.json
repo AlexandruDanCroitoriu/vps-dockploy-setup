@@ -1,0 +1,25 @@
+{
+  "Common": {
+    "loading": "Se încarcă...",
+    "sending": "Se trimite...",
+    "sku": "Cod produs",
+    "siteDescription": "Descoperă cele mai bune produse pe {siteName}: calitate, prețuri competitive și livrare rapidă."
+  },
+  "Errors": {
+    "fieldsRequired": "Toate câmpurile sunt obligatorii",
+    "passwordsMismatch": "Parolele nu coincid",
+    "unexpectedError": "A apărut o eroare neașteptată. Încearcă din nou.",
+    "emailPasswordRequired": "Adresa de e-mail și parola sunt obligatorii",
+    "verifyEmailFirst": "Confirmă adresa de e-mail înainte de autentificare.",
+    "invalidCredentials": "Adresa de e-mail sau parola este incorectă.",
+    "emailRequired": "Adresa de e-mail este obligatorie",
+    "firstLastNameRequired": "Prenumele și numele sunt obligatorii",
+    "passwordEmailRequired": "Parola și noua adresă de e-mail sunt obligatorii",
+    "invalidEmail": "Introdu o adresă de e-mail validă",
+    "failedUpdateCustomer": "Informațiile clientului nu au putut fi actualizate",
+    "newPasswordMustDiffer": "Parola nouă trebuie să fie diferită de parola actuală",
+    "failedPasswordReset": "Solicitarea de resetare a parolei nu a reușit",
+    "verificationTokenRequired": "Codul de confirmare este obligatoriu",
+    "failedAddToCart": "Produsul nu a putut fi adăugat în coș"
+  }
+}

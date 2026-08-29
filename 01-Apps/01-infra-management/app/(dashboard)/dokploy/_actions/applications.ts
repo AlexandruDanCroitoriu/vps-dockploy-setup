@@ -5,12 +5,20 @@ import { randomBytes } from "node:crypto";
 import {
   createDokployDockerApplication,
   createDokployGithubApplication,
+  deployDokployService,
   DOKPLOY_APPLICATION_BUILD_TYPES,
   generateDokployDomain,
   getActiveDokployConfiguration,
+  getDokployDomains,
+  getFreshDokployService,
+  getFreshDokployProject,
   getFreshDokployProjects,
   isValidHostname,
   isValidPort,
+  mergeDokployProjectEnv,
+  parseDokployEnvironmentEntries,
+  updateDokployProjectEnv,
+  updateDokployServiceEnv,
   type DokployApplicationBuildType,
 } from "@/lib/dokploy";
 import {
@@ -24,6 +32,19 @@ import {
   matchesRepositoryApplicationInput,
 } from "@/lib/github/repository-applications";
 import { getInfraManagementZotImage } from "@/lib/zot/infra-management-image";
+import { getVendureBackendZotImage } from "@/lib/zot/vendure-backend-image";
+import {
+  getVendureStorefrontZotImage,
+  isVendureStorefrontPath,
+} from "@/lib/zot/vendure-storefront-image";
+import { getVendureChannels } from "@/lib/vendure/channels";
+import {
+  getVendurePostgresEnvironment,
+  getVendureEmailEnvironment,
+  getVendureStorageEnvironment,
+  VendureBackendSetupError,
+} from "@/lib/vendure/backend-environment";
+import { provisionResendDomain } from "@/lib/resend/provisioning";
 import {
   deployAfterCreateRequested,
   getActionError,
@@ -37,6 +58,31 @@ const APP_NAME_PATTERN = /^[a-zA-Z0-9._-]+$/;
 const BRANCH_PATTERN = /^[a-zA-Z0-9._\-/#]+$/;
 const REPOSITORY_PART_PATTERN = /^[a-zA-Z0-9._-]+$/;
 const INFRA_MANAGEMENT_PATH = "/01-Apps/01-infra-management";
+const VENDURE_BACKEND_PATH = "/01-Apps/02-Online-Store-Vendure/apps/server";
+const VENDURE_STOREFRONT_PATHS = new Set([
+  "/01-Apps/02-Online-Store-Vendure/apps/storefront",
+  "/01-Apps/02-Online-Store-Vendure/apps/storefront-clean",
+]);
+
+function deployedStorefrontUrl(
+  rootDomain: string,
+  services: readonly {
+    name: string;
+    sourcePath: string | null;
+    status: string;
+  }[],
+) {
+  const storefronts = services.filter(
+    (service) =>
+      service.sourcePath !== null &&
+      VENDURE_STOREFRONT_PATHS.has(service.sourcePath),
+  );
+  const storefront =
+    storefronts.find((service) => service.status === "running") ??
+    storefronts[0];
+  const folder = storefront?.sourcePath?.split("/").at(-1) ?? "storefront";
+  return `https://${folder}.${rootDomain}`;
+}
 
 function isInfraManagementApplication(input: {
   owner: string;
@@ -52,6 +98,64 @@ function isInfraManagementApplication(input: {
 
 function field(formData: FormData, name: string) {
   return formData.get(name)?.toString().trim() ?? "";
+}
+
+function environmentLine(name: string, value: string) {
+  return `${name}=${JSON.stringify(value)}`;
+}
+
+async function resolveVendureBackend(projectId: string, applicationId: string) {
+  const project = await getFreshDokployProject(projectId);
+  const backend = project?.environments
+    .flatMap((environment) => environment.services)
+    .find(
+      (service) =>
+        service.type === "applications" &&
+        service.id === applicationId &&
+        (service.name.toLowerCase() === "vendure" ||
+          service.sourcePath?.toLowerCase() ===
+            VENDURE_BACKEND_PATH.toLowerCase()),
+    );
+  if (!backend) throw new Error("The selected Vendure backend was not found.");
+  const domains = await getDokployDomains("applications", applicationId);
+  const domain = domains.find((candidate) => candidate.enabled) ?? domains[0];
+  if (!domain) {
+    throw new Error(
+      "Add a domain to the Vendure backend before creating a storefront.",
+    );
+  }
+  return `${domain.https ? "https" : "http"}://${domain.host}`;
+}
+
+export async function getVendureChannelsAction(
+  projectId: string,
+  applicationId: string,
+) {
+  if (!(await requireAuthenticatedSession())) {
+    return { status: "error" as const, message: SESSION_EXPIRED_STATE.message };
+  }
+  try {
+    const [origin, instance] = await Promise.all([
+      resolveVendureBackend(projectId, applicationId),
+      getActiveDokployConfiguration(),
+    ]);
+    if (!instance) throw new Error("No active Dockploy instance is selected.");
+    return {
+      status: "success" as const,
+      channels: await getVendureChannels({
+        adminApiUrl: `${origin}/admin-api`,
+        username: instance.defaultServiceUsername,
+        password: instance.defaultServicePassword,
+      }),
+    };
+  } catch (error) {
+    const state = getActionError(
+      error,
+      "Unable to load Vendure channels.",
+      "Vendure channel discovery",
+    );
+    return { status: "error" as const, message: state.message };
+  }
 }
 
 async function getInfraManagementEnvironment(input: {
@@ -82,6 +186,7 @@ async function getInfraManagementEnvironment(input: {
     authSecret,
     nextAuthUrl: `https://${hostname}`,
     cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN ?? "",
+    resendApiKey: process.env.RESEND_API_KEY ?? "",
   });
 }
 
@@ -121,7 +226,7 @@ export async function createApplicationAction(
   void previousState;
   if (!(await requireAuthenticatedSession())) return SESSION_EXPIRED_STATE;
 
-  const name = field(formData, "name");
+  let name = field(formData, "name");
   const description = field(formData, "description");
   const environmentId = field(formData, "environmentId");
   const githubId = field(formData, "githubId");
@@ -135,12 +240,50 @@ export async function createApplicationAction(
   const publishDirectory = field(formData, "publishDirectory");
   let host = field(formData, "host").toLowerCase();
   const subdomain = field(formData, "subdomain");
-  const port = Number(formData.get("port"));
+  let port = Number(formData.get("port"));
   const watchPaths = field(formData, "watchPaths")
     .split(/[\r\n,]+/)
     .map((path) => path.trim())
     .filter(Boolean);
   const deployAfterCreate = deployAfterCreateRequested(formData);
+  const vendureBackendId = field(formData, "vendureBackendId");
+  const vendureChannelToken = field(formData, "vendureChannelToken");
+  const vendureTemplateProvisioning =
+    field(formData, "vendureTemplateProvisioning") === "on";
+  const vendurePreset =
+    buildPath === VENDURE_BACKEND_PATH ||
+    VENDURE_STOREFRONT_PATHS.has(buildPath);
+  const vendureBackend = buildPath === VENDURE_BACKEND_PATH;
+  const vendureStorefront = isVendureStorefrontPath(buildPath);
+
+  if (vendureBackend) {
+    const instance = await getActiveDokployConfiguration();
+    if (!instance || !isValidHostname(instance.rootDomain)) {
+      return {
+        status: "error",
+        message:
+          "Configure a valid instance root domain before deploying Vendure.",
+      };
+    }
+    name = "vendure";
+    host ||= `vendure.${instance.rootDomain}`;
+    port = 3000;
+  }
+
+  if (vendureStorefront) {
+    const instance = await getActiveDokployConfiguration();
+    if (!instance || !isValidHostname(instance.rootDomain)) {
+      return {
+        status: "error",
+        message:
+          "Configure a valid instance root domain before deploying a Vendure storefront.",
+      };
+    }
+    const storefrontFolder = buildPath.split("/").at(-1) ?? "storefront";
+    name = `vendure-${storefrontFolder}`;
+    host ||= `${storefrontFolder}.${instance.rootDomain}`;
+    port = 3000;
+  }
 
   if (
     !projectId ||
@@ -172,6 +315,12 @@ export async function createApplicationAction(
   }
   if (host && (!isValidHostname(host) || !isValidPort(port))) {
     return { status: "error", message: "Enter a valid hostname and port." };
+  }
+  if (vendurePreset && !host) {
+    return {
+      status: "error",
+      message: "A domain hostname is required for Vendure deployments.",
+    };
   }
   if (!APP_NAME_PATTERN.test(name) || name.length > 63) {
     return {
@@ -226,12 +375,151 @@ export async function createApplicationAction(
       }
     }
 
-    const environmentVariables = await getInfraManagementEnvironment({
+    let environmentVariables = await getInfraManagementEnvironment({
       owner,
       repository,
       buildPath,
       host,
     });
+    if (vendureBackend) {
+      const [instance, project] = await Promise.all([
+        getActiveDokployConfiguration(),
+        getFreshDokployProject(projectId),
+      ]);
+      if (!instance)
+        throw new Error("No active Dockploy instance is selected.");
+      if (!project)
+        throw new VendureBackendSetupError(
+          "The selected project was not found.",
+        );
+      const environment = project.environments.find(
+        (candidate) => candidate.environmentId === environmentId,
+      );
+      if (!environment)
+        throw new VendureBackendSetupError(
+          "The selected project environment was not found.",
+        );
+      const currentProjectEnvironment = parseDokployEnvironmentEntries(
+        project.env,
+      );
+      const { sendingKey } = await provisionResendDomain(
+        instance.rootDomain,
+        currentProjectEnvironment.SMTP_PASSWORD,
+      );
+      const projectEnvironment = mergeDokployProjectEnv(project.env, {
+        SMTP_HOST: "smtp.resend.com",
+        SMTP_PORT: "465",
+        SMTP_SECURE: "true",
+        SMTP_USERNAME: "resend",
+        SMTP_PASSWORD: sendingKey,
+        MAIL_FROM_ADDRESS: `account@${instance.rootDomain}`,
+        MAIL_FROM_NAME: instance.name,
+        VENDURE_STOREFRONT_URL: deployedStorefrontUrl(
+          instance.rootDomain,
+          environment.services,
+        ),
+      });
+      if (projectEnvironment !== project.env) {
+        await updateDokployProjectEnv(projectId, projectEnvironment);
+      }
+      const databaseEnvironment = getVendurePostgresEnvironment(
+        projectEnvironment,
+        environment.services,
+      );
+      const storageEnvironment =
+        getVendureStorageEnvironment(projectEnvironment);
+      const emailEnvironment = getVendureEmailEnvironment(projectEnvironment);
+      environmentVariables = [
+        environmentLine("APP_ENV", "production"),
+        environmentLine("COOKIE_SECRET", randomBytes(32).toString("base64url")),
+        environmentLine("SUPERADMIN_USERNAME", instance.defaultServiceUsername),
+        environmentLine("SUPERADMIN_PASSWORD", instance.defaultServicePassword),
+        environmentLine("VENDURE_HOST", host),
+        ...(vendureChannelToken
+          ? [environmentLine("VENDURE_CHANNEL_TOKEN", vendureChannelToken)]
+          : []),
+        ...Object.entries(databaseEnvironment).map(([key, value]) =>
+          environmentLine(key, value),
+        ),
+        ...Object.entries(storageEnvironment).map(([key, value]) =>
+          environmentLine(key, value),
+        ),
+        ...Object.entries(emailEnvironment).map(([key, value]) =>
+          environmentLine(key, value),
+        ),
+      ].join("\n");
+    } else if (vendureStorefront) {
+      if (!vendureBackendId || !vendureChannelToken) {
+        return {
+          status: "error",
+          message: "Select a Vendure backend and channel.",
+        };
+      }
+      const origin = await resolveVendureBackend(projectId, vendureBackendId);
+      const instance = await getActiveDokployConfiguration();
+      if (!instance)
+        throw new Error("No active Dockploy instance is selected.");
+      if (!vendureTemplateProvisioning) {
+        const channels = await getVendureChannels({
+          adminApiUrl: `${origin}/admin-api`,
+          username: instance.defaultServiceUsername,
+          password: instance.defaultServicePassword,
+        });
+        if (
+          !channels.some((channel) => channel.token === vendureChannelToken)
+        ) {
+          return {
+            status: "error",
+            message: "The selected Vendure channel is no longer available.",
+          };
+        }
+      }
+      const storefrontOrigin = `${formData.get("https") === "on" ? "https" : "http"}://${host}`;
+      const storefrontProject = await getFreshDokployProject(projectId);
+      const backendSummary = storefrontProject?.environments
+        .flatMap((environment) => environment.services)
+        .find(
+          (service) =>
+            service.type === "applications" && service.id === vendureBackendId,
+        );
+      if (!storefrontProject || !backendSummary) {
+        throw new Error("The selected Vendure backend is no longer available.");
+      }
+      const backend = await getFreshDokployService(
+        projectId,
+        "applications",
+        backendSummary.id,
+      );
+      if (!backend?.env.trim()) {
+        throw new VendureBackendSetupError(
+          "Unable to load the Vendure backend environment without risking its existing configuration.",
+        );
+      }
+      const updatedProjectEnvironment = mergeDokployProjectEnv(
+        storefrontProject.env,
+        { VENDURE_STOREFRONT_URL: storefrontOrigin },
+      );
+      if (updatedProjectEnvironment !== storefrontProject.env) {
+        await updateDokployProjectEnv(projectId, updatedProjectEnvironment);
+      }
+      await updateDokployServiceEnv(
+        "applications",
+        backend.id,
+        mergeDokployProjectEnv(backend.env, {
+          VENDURE_STOREFRONT_URL: storefrontOrigin,
+        }),
+      );
+      await deployDokployService("applications", backend.id);
+      environmentVariables = [
+        environmentLine("VENDURE_SHOP_API_URL", `${origin}/shop-api`),
+        environmentLine("VENDURE_CHANNEL_TOKEN", vendureChannelToken),
+        environmentLine("NEXT_PUBLIC_SITE_URL", storefrontOrigin),
+        environmentLine(
+          "REVALIDATION_SECRET",
+          randomBytes(32).toString("base64url"),
+        ),
+      ].join("\n");
+    }
     const domain = host
       ? {
           host,
@@ -239,53 +527,65 @@ export async function createApplicationAction(
           https: formData.get("https") === "on",
         }
       : undefined;
-    const applicationId = infraManagement
-      ? await (async () => {
-          const zotImage = await getInfraManagementZotImage();
-          if (!zotImage.available) throw new Error(zotImage.message);
-          return createDokployDockerApplication({
+    const applicationId =
+      infraManagement || vendureBackend || vendureStorefront
+        ? await (async () => {
+            const zotImage = vendureBackend
+              ? await getVendureBackendZotImage()
+              : vendureStorefront
+                ? await getVendureStorefrontZotImage(buildPath)
+                : await getInfraManagementZotImage();
+            if (!zotImage.available) {
+              if (vendureBackend || vendureStorefront) {
+                throw new VendureBackendSetupError(zotImage.message);
+              }
+              throw new Error(zotImage.message);
+            }
+            return createDokployDockerApplication({
+              name,
+              description,
+              environmentId,
+              image: zotImage.image,
+              registryUrl: zotImage.registry.host,
+              registryUsername: zotImage.registry.username,
+              registryPassword: zotImage.registry.password,
+              environmentVariables,
+              mounts: infraManagement
+                ? [
+                    {
+                      type: "volume",
+                      volumeName: "infra-management-data",
+                      mountPath: "/app/data",
+                    },
+                    {
+                      type: "bind",
+                      hostPath: "/var/run/docker.sock",
+                      mountPath: "/var/run/docker.sock",
+                    },
+                  ]
+                : undefined,
+              domain,
+            });
+          })()
+        : await createDokployGithubApplication({
             name,
             description,
             environmentId,
-            image: zotImage.image,
-            registryUrl: zotImage.registry.host,
-            registryUsername: zotImage.registry.username,
-            registryPassword: zotImage.registry.password,
+            githubId: githubId || undefined,
+            owner,
+            repository,
+            branch,
+            buildPath,
+            watchPaths,
+            buildType,
+            dockerfile,
+            dockerContextPath,
+            publishDirectory,
+            isStaticSpa: formData.get("isStaticSpa") === "on",
+            autoDeploy: formData.get("autoDeploy") === "on",
             environmentVariables,
-            mounts: [
-              {
-                type: "volume",
-                volumeName: "infra-management-data",
-                mountPath: "/app/data",
-              },
-              {
-                type: "bind",
-                hostPath: "/var/run/docker.sock",
-                mountPath: "/var/run/docker.sock",
-              },
-            ],
             domain,
           });
-        })()
-      : await createDokployGithubApplication({
-          name,
-          description,
-          environmentId,
-          githubId: githubId || undefined,
-          owner,
-          repository,
-          branch,
-          buildPath,
-          watchPaths,
-          buildType,
-          dockerfile,
-          dockerContextPath,
-          publishDirectory,
-          isStaticSpa: formData.get("isStaticSpa") === "on",
-          autoDeploy: formData.get("autoDeploy") === "on",
-          environmentVariables,
-          domain,
-        });
     if (deployAfterCreate) {
       if (!(await startInitialDeployment("applications", applicationId))) {
         revalidatePath("/dokploy");
@@ -308,6 +608,9 @@ export async function createApplicationAction(
       createdService: { id: applicationId, type: "applications" },
     };
   } catch (error) {
+    if (error instanceof VendureBackendSetupError) {
+      return { status: "error", message: error.message };
+    }
     return getActionError(
       error,
       "Unable to create the application.",
