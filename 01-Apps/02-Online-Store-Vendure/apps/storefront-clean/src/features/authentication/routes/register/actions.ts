@@ -19,15 +19,23 @@ export async function registerAction(prevState: { error?: string } | undefined, 
     }
 
 
-    const result = await mutate(RegisterCustomerAccountMutation, {
-        input: {
-            emailAddress,
-            firstName: firstName || undefined,
-            lastName: lastName || undefined,
-            phoneNumber: phoneNumber || undefined,
-            password,
-        }
-    });
+    const result = await mutate(
+        RegisterCustomerAccountMutation,
+        {
+            input: {
+                emailAddress,
+                firstName: firstName || undefined,
+                lastName: lastName || undefined,
+                phoneNumber: phoneNumber || undefined,
+                password,
+            },
+        },
+        {
+            fetch: {
+                headers: {'x-vendure-storefront': 'storefront-clean'},
+            },
+        },
+    );
 
     const registerResult = result.data.registerCustomerAccount;
 

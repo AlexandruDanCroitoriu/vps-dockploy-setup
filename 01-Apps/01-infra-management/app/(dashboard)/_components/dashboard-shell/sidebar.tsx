@@ -2,7 +2,6 @@
 
 import {
   CloudIcon,
-  EnvelopeIcon,
   FolderIcon,
   HomeIcon,
   ServerIcon,
@@ -44,7 +43,6 @@ export function Sidebar({
   const navigation = [
     { name: "Home", href: "/home", icon: HomeIcon },
     { name: "Cloudflare", href: "/cloudflare", icon: CloudIcon },
-    { name: "Resend", href: "/resend", icon: EnvelopeIcon },
     ...(projectBuildsEnabled
       ? [{ name: "Projects", href: "/projects", icon: FolderIcon } as const]
       : []),

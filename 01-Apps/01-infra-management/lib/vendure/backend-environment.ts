@@ -86,6 +86,7 @@ export const VENDURE_EMAIL_ENVIRONMENT_KEYS = [
   "MAIL_FROM_ADDRESS",
   "MAIL_FROM_NAME",
   "VENDURE_STOREFRONT_URL",
+  "VENDURE_STOREFRONT_CLEAN_URL",
 ] as const;
 
 const VENDURE_BACKEND_PATH = "/01-Apps/02-Online-Store-Vendure/apps/server";

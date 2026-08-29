@@ -31,6 +31,10 @@ import {
   deleteLocalProjectImageAction,
   pushProjectImageToRegistryAction,
 } from "../_actions/build-image";
+import {
+  registryHasLocalImage,
+  type PublishedRegistryImage,
+} from "./project-image-publication";
 
 const initialState: BuildImageState = { status: "idle", message: "" };
 
@@ -38,24 +42,16 @@ type ProjectRegistry = {
   instanceId: string;
   instanceName: string;
   host: string;
-  publishedImages: Array<{
+  images: Array<{
+    name: string;
     tag: string;
     digest: string;
+    publishedAt: string;
+    current: boolean;
     configDigest: string;
   }>;
+  publishedImages: PublishedRegistryImage[];
 };
-
-function registryHasLocalImage(
-  registry: ProjectRegistry,
-  image: { tag: string; identifier: string; digests: string[] },
-) {
-  return registry.publishedImages.some(
-    (published) =>
-      published.tag === image.tag &&
-      (published.configDigest === image.identifier ||
-        image.digests.includes(published.digest)),
-  );
-}
 
 export function ProjectImageCard({
   project,
@@ -133,6 +129,23 @@ export function ProjectImageCard({
   const building = jobRunning && currentJob.type === "build";
   const imageActionPending = buildPending || jobRunning;
   const availableRegistries = registries.filter((registry) => registry.host);
+  const zotOnlyImages = availableRegistries.flatMap((registry) =>
+    registry.images
+      .filter(
+        (registryImage) =>
+          !localImages.some(
+            (localImage) =>
+              registryImage.configDigest === localImage.imageId ||
+              localImage.digests.includes(registryImage.digest),
+          ),
+      )
+      .map((image) => ({
+        ...image,
+        instanceId: registry.instanceId,
+        instanceName: registry.instanceName,
+        host: registry.host,
+      })),
+  );
 
   useEffect(() => {
     if (
@@ -240,6 +253,7 @@ export function ProjectImageCard({
           pushAction={registryPushAction}
           pushPending={registryPushPending}
           pushState={registryPushState}
+          zotOnlyItems={zotOnlyImages}
           items={localImages.map((image) => ({
             key: `${image.name}:${image.tag}`,
             name: target.imageRepository,
@@ -255,207 +269,6 @@ export function ProjectImageCard({
   );
 }
 
-/* Removed: remote Zot inventory table. Image rows now own per-instance pushes.
-function ZotRegistryTable({
-  title,
-  project,
-  target,
-  registries,
-  localImagesAvailable,
-  imageActionPending,
-  pushing,
-  pushAction,
-  deleteAction,
-  deletePending,
-  deleteState,
-}: {
-  title: string;
-  project: RepositoryProject;
-  target: RepositoryImageTarget;
-  registries: ProjectRegistry[];
-  localImagesAvailable: boolean;
-  imageActionPending: boolean;
-  pushing: boolean;
-  pushAction: (formData: FormData) => void;
-  deleteAction: (formData: FormData) => void;
-  deletePending: boolean;
-  deleteState: BuildImageState;
-}) {
-  return (
-    <section>
-      <div className="flex min-h-7 items-center justify-between gap-2">
-        <h3 className="text-xs font-semibold text-gray-900 dark:text-gray-100">
-          {title}
-        </h3>
-        <div className="flex items-center gap-1">
-          <RefreshZotButton />
-          <form action={pushAction}>
-            <input type="hidden" name="projectName" value={project.name} />
-            <input type="hidden" name="targetId" value={target.id} />
-            <input type="hidden" name="tag" value="latest" />
-            <Button
-              type="submit"
-              size="xs"
-              variant="success"
-              disabled={
-                imageActionPending ||
-                !target.available ||
-                !localImagesAvailable ||
-                !registries.some((registry) => registry.host)
-              }
-              title="Push the image to every available Zot registry"
-              className="inline-flex items-center gap-1"
-            >
-              {pushing ? (
-                <ArrowPathIcon
-                  className="size-3.5 animate-spin"
-                  aria-hidden="true"
-                />
-              ) : (
-                <ArrowUpTrayIcon className="size-3.5" aria-hidden="true" />
-              )}
-              {pushing ? "Pushing…" : "Push to all"}
-            </Button>
-          </form>
-        </div>
-      </div>
-      {deleteState.status === "error" && (
-        <ActionMessage
-          status={deleteState.status}
-          message={deleteState.message}
-        />
-      )}
-      <div className="mt-2 overflow-x-auto rounded-md border border-gray-200 dark:border-white/10">
-        <table className="min-w-full divide-y divide-gray-200 text-left text-xs dark:divide-white/10">
-          <thead className="bg-gray-50 text-gray-500 dark:bg-white/[0.03] dark:text-gray-400">
-            <tr>
-              <th scope="col" className="px-3 py-2 font-semibold">
-                Dokploy instance
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100 dark:divide-white/5">
-            {registries.map((registry) => (
-              <tr key={registry.instanceId} className="align-top">
-                <th scope="row" className="min-w-40 px-3 py-3 font-medium">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    {registry.host ? (
-                      <a
-                        href={`https://${registry.host}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-indigo-600 hover:underline dark:text-indigo-300"
-                      >
-                        {registry.instanceName}
-                        <ArrowTopRightOnSquareIcon
-                          className="size-3 shrink-0"
-                          aria-hidden="true"
-                        />
-                      </a>
-                    ) : (
-                      <span className="text-gray-900 dark:text-gray-100">
-                        {registry.instanceName}
-                      </span>
-                    )}
-                  {registry.error ? (
-                    <p className="text-red-600 dark:text-red-400">
-                      {registry.error}
-                    </p>
-                  ) : !registry.host ? (
-                    <p className="text-gray-500 dark:text-gray-400">
-                      Zot registry is not deployed in this instance.
-                    </p>
-                  ) : !registry.images.some((image) => image.current) ? (
-                    <p className="text-gray-500 dark:text-gray-400">
-                      No current image.
-                    </p>
-                  ) : (
-                    registry.images
-                      .filter((image) => image.current)
-                      .slice(0, 1)
-                      .map((image) => (
-                        <div key={`${image.digest}:${image.tag}`} className="flex items-center gap-2">
-                            <a
-                              href={`https://${registry.host}/image/${encodeURIComponent(image.name)}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex max-w-full items-center gap-1 font-medium text-indigo-600 hover:underline dark:text-indigo-300"
-                              title={`Open ${image.name}:${image.tag} in Zot`}
-                            >
-                              <span className="truncate">{image.name}:{image.tag}</span>
-                              <ArrowTopRightOnSquareIcon
-                                className="size-3.5 shrink-0"
-                                aria-hidden="true"
-                              />
-                            </a>
-                          <form
-                            action={deleteAction}
-                            onSubmit={(event) => {
-                              if (!window.confirm(
-                                  `Delete the current image ${image.name}:${image.tag}? This image may be in use.`,
-                                )) {
-                                event.preventDefault();
-                              }
-                            }}
-                          >
-                            <input
-                              type="hidden"
-                              name="projectName"
-                              value={project.name}
-                            />
-                            <input
-                              type="hidden"
-                              name="targetId"
-                              value={target.id}
-                            />
-                            <input
-                              type="hidden"
-                              name="instanceId"
-                              value={registry.instanceId}
-                            />
-                            <input type="hidden" name="tag" value={image.tag} />
-                            <input
-                              type="hidden"
-                              name="digest"
-                              value={image.digest}
-                            />
-                            <button
-                              type="submit"
-                              disabled={deletePending}
-                              aria-label={`Delete ${image.name}:${image.tag}`}
-                              title={`Delete ${image.name}:${image.tag}`}
-                              className="rounded-md p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-red-400/10 dark:hover:text-red-300"
-                            >
-                              <TrashIcon
-                                className="size-4"
-                                aria-hidden="true"
-                              />
-                            </button>
-                          </form>
-                        </div>
-                      ))
-                  )}
-                  </div>
-                </th>
-              </tr>
-            ))}
-            {registries.length === 0 && (
-              <tr>
-                <td
-                  className="px-3 py-4 text-center text-gray-500 dark:text-gray-400"
-                >
-                  No Dokploy instances are configured.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
-
-*/
 function LocalImageList({
   projectName,
   targetId,
@@ -469,6 +282,7 @@ function LocalImageList({
   pushAction,
   pushPending,
   pushState,
+  zotOnlyItems,
 }: {
   projectName: string;
   targetId: string;
@@ -490,6 +304,16 @@ function LocalImageList({
   pushAction: (formData: FormData) => void;
   pushPending: boolean;
   pushState: BuildImageState;
+  zotOnlyItems: Array<{
+    name: string;
+    tag: string;
+    digest: string;
+    publishedAt: string;
+    current: boolean;
+    instanceId: string;
+    instanceName: string;
+    host: string;
+  }>;
 }) {
   return (
     <section>
@@ -504,7 +328,7 @@ function LocalImageList({
       )}
       {error ? (
         <p className="mt-2 text-xs text-red-600 dark:text-red-400">{error}</p>
-      ) : items.length === 0 ? (
+      ) : items.length === 0 && zotOnlyItems.length === 0 ? (
         <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
           {emptyMessage}
         </p>
@@ -517,16 +341,24 @@ function LocalImageList({
                 className="flex items-center gap-3 px-3 py-2.5"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-medium text-gray-900 dark:text-gray-100">
-                    {item.name}
-                  </p>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <p className="truncate text-xs font-medium text-gray-900 dark:text-gray-100">
+                      {item.name}
+                    </p>
+                    <span className="shrink-0 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-700 dark:bg-indigo-400/10 dark:text-indigo-300">
+                      Local
+                    </span>
+                  </div>
                   <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
                     {formatImageDate(item.date)}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-1">
                   {registries.map((registry) => {
-                    const published = registryHasLocalImage(registry, item);
+                    const published = registryHasLocalImage(
+                      registry.publishedImages,
+                      item,
+                    );
                     if (published) {
                       return (
                         <a
@@ -598,6 +430,35 @@ function LocalImageList({
               </li>
             );
           })}
+          {zotOnlyItems.map((item) => (
+            <li
+              key={`${item.instanceId}:${item.digest}:${item.tag}`}
+              className="flex items-center gap-3 px-3 py-2.5"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 items-center gap-2">
+                  <a
+                    href={`https://${item.host}/image/${encodeURIComponent(item.name)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="truncate text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-300"
+                    title={`Open ${item.name}:${item.tag} in ${item.instanceName}`}
+                  >
+                    {item.name}:{item.tag}
+                  </a>
+                  <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300">
+                    In Zot
+                  </span>
+                </div>
+                <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
+                  {formatImageDate(item.publishedAt)}
+                </p>
+              </div>
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                {item.instanceName}
+              </span>
+            </li>
+          ))}
         </ul>
       )}
     </section>
@@ -630,10 +491,7 @@ function RegistryPushButton({
       className="inline-flex items-center gap-1"
     >
       {pending ? (
-        <ArrowPathIcon
-          className="size-3.5 animate-spin"
-          aria-hidden="true"
-        />
+        <ArrowPathIcon className="size-3.5 animate-spin" aria-hidden="true" />
       ) : (
         <ArrowUpTrayIcon className="size-3.5" aria-hidden="true" />
       )}

@@ -8,3 +8,8 @@
 - Colocate GraphQL operations and translations with their owning feature.
 - Add or explicitly exempt an upgrade note for every downstream-impacting pull request.
 - Run `npm run upgrade:validate`, tests, lint, type checks, and the production build before declaring work complete.
+
+## Email storefront identity
+
+- Registration requests send the fixed server-side `x-vendure-storefront: storefront-clean` identifier. Vendure uses `VENDURE_STOREFRONT_CLEAN_URL` for the verification link and sender presentation.
+- Keep the identifier fixed in server-owned code. Never forward a browser-controlled origin or use it directly in an email link.

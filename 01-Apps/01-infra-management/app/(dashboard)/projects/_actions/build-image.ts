@@ -4,9 +4,6 @@ import path from "node:path";
 import { getServerSession } from "next-auth";
 
 import { authOptions } from "@/auth";
-import { getDokployInstanceSummaries } from "@/lib/dokploy";
-import { invalidateDokployMemoryState } from "@/lib/dokploy/instance-memory-state";
-import { clearDokployRenderSnapshots } from "@/lib/dokploy/render-snapshot-cache";
 import {
   buildDockerImage,
   deleteLocalDockerImage,
@@ -26,13 +23,8 @@ import {
   refreshRepositoryCheckout,
 } from "@/lib/repository-workspace";
 import { type ActiveZotRegistry } from "@/lib/zot/active-registry";
+import { getInstanceZotRegistry } from "@/lib/zot/instance-registries";
 import {
-  getInstanceZotRegistries,
-  getInstanceZotRegistry,
-} from "@/lib/zot/instance-registries";
-import {
-  deleteZotRegistryImage,
-  getZotRegistryImages,
   invalidateZotRegistryMemoryState,
   removeCurrentZotRegistryImage,
 } from "@/lib/zot/registry-images";
@@ -52,27 +44,6 @@ type ImageRequest = {
   repository: string;
   tag: string;
 };
-
-export async function refreshZotRegistryAction(): Promise<BuildImageState> {
-  if (!areProjectBuildsEnabled()) {
-    return { status: "error", message: "Local projects are disabled." };
-  }
-
-  const session = await getServerSession(authOptions);
-  if (!session?.user) {
-    return { status: "error", message: "Your session has expired." };
-  }
-
-  const registries = await getInstanceZotRegistries();
-  for (const instance of getDokployInstanceSummaries()) {
-    invalidateDokployMemoryState(instance.id);
-    clearDokployRenderSnapshots(instance.id);
-  }
-  for (const target of registries) {
-    if (target.registry) invalidateZotRegistryMemoryState(target.registry.host);
-  }
-  return { status: "success", message: "Zot registry refreshed." };
-}
 
 export async function refreshProjectSourceAction(): Promise<BuildImageState> {
   if (!areProjectBuildsEnabled()) {
@@ -127,7 +98,8 @@ async function getImageRequest(
     return {
       error: {
         status: "error",
-        message: "The selected repository image target does not have a Dockerfile.",
+        message:
+          "The selected repository image target does not have a Dockerfile.",
       },
     };
   }
@@ -209,7 +181,10 @@ export async function pushProjectImageToRegistryAction(
       (image) => image.tag === request.tag,
     );
     if (!localImage) {
-      return { status: "error", message: "The selected local image no longer exists." };
+      return {
+        status: "error",
+        message: "The selected local image no longer exists.",
+      };
     }
     await pushRequestedImage(request, registry, [], localImage.current);
     return {
@@ -245,49 +220,6 @@ export async function deleteLocalProjectImageAction(
   }
 }
 
-export async function deleteZotProjectImageAction(
-  _previousState: BuildImageState,
-  formData: FormData,
-): Promise<BuildImageState> {
-  const request = await getImageRequest(formData);
-  if ("error" in request) return request.error;
-
-  try {
-    const instanceId = String(formData.get("instanceId") ?? "");
-    const registry = await getInstanceZotRegistry(instanceId);
-    if (!registry) {
-      return {
-        status: "error",
-        message: "The selected instance Zot registry is unavailable.",
-      };
-    }
-    const digest = String(formData.get("digest") ?? "");
-    const registryImage = (
-      await getZotRegistryImages(registry, request.repository)
-    ).find((image) => image.tag === request.tag && image.digest === digest);
-    if (!registryImage) {
-      return { status: "error", message: "The Zot image no longer exists." };
-    }
-    await deleteZotRegistryImage(
-      registry,
-      request.repository,
-      registryImage.tag,
-    );
-    return {
-      status: "success",
-      message: `Deleted ${registry.host}/${request.image}.`,
-    };
-  } catch (error) {
-    return {
-      status: "error",
-      message:
-        error instanceof Error
-          ? error.message
-          : `Unable to delete ${request.image} from Zot.`,
-    };
-  }
-}
-
 export async function buildProjectImageAction(
   _previousState: BuildImageState,
   formData: FormData,
@@ -308,106 +240,6 @@ export async function buildProjectImageAction(
       return {
         status: "error" as const,
         message: `Docker build failed for ${request.image}.`,
-      };
-    }
-  });
-  return { status: job.status, message: job.message, job };
-}
-
-export async function buildAndPushProjectImageAction(
-  _previousState: BuildImageState,
-  formData: FormData,
-): Promise<BuildImageState> {
-  const request = await getImageRequest(formData);
-  if ("error" in request) return request.error;
-
-  const job = startImageJob(request.jobKey, "build-push", async () => {
-    try {
-      await buildRequestedImage(request);
-
-      const registries = (await getInstanceZotRegistries()).flatMap((target) =>
-        target.registry ? [target.registry] : [],
-      );
-      if (registries.length === 0) {
-        return {
-          status: "error" as const,
-          message: "The image was built, but no Zot registry is available.",
-        };
-      }
-      const results = await Promise.allSettled(
-        registries.map((registry) => pushRequestedImage(request, registry)),
-      );
-      const pushed = results.filter(
-        (result) => result.status === "fulfilled",
-      ).length;
-      if (pushed !== registries.length) {
-        return {
-          status: "error" as const,
-          message: `Built the image and pushed it to ${pushed} of ${registries.length} Zot registries.`,
-        };
-      }
-      return {
-        status: "success" as const,
-        message: `Built the image and pushed it to all ${pushed} Zot registries.`,
-      };
-    } catch {
-      return {
-        status: "error" as const,
-        message: `Unable to build and push ${request.image}. Verify Docker and the Zot registry are available.`,
-      };
-    }
-  });
-  return { status: job.status, message: job.message, job };
-}
-
-export async function pushProjectImageToAllRegistriesAction(
-  _previousState: BuildImageState,
-  formData: FormData,
-): Promise<BuildImageState> {
-  const request = await getImageRequest(formData);
-  if ("error" in request) return request.error;
-
-  const job = startImageJob(request.jobKey, "push", async () => {
-    try {
-      const localVersions = await listLocalDockerImages(request.repository);
-      if (localVersions.length === 0) {
-        return {
-          status: "error" as const,
-          message: `Build a local ${request.repository} image before pushing.`,
-        };
-      }
-      const registries = (await getInstanceZotRegistries()).flatMap((target) =>
-        target.registry ? [target.registry] : [],
-      );
-      if (registries.length === 0) {
-        return {
-          status: "error" as const,
-          message:
-            "Create and deploy a Zot service with an enabled domain before pushing.",
-        };
-      }
-      const results = await Promise.allSettled(
-        registries.map((registry) =>
-          pushRequestedImage(request, registry, localVersions),
-        ),
-      );
-      const pushed = results.filter(
-        (result) => result.status === "fulfilled",
-      ).length;
-      if (pushed !== registries.length) {
-        return {
-          status: "error" as const,
-          message: `Pushed the image to ${pushed} of ${registries.length} Zot registries.`,
-        };
-      }
-      return {
-        status: "success" as const,
-        message: `Pushed the image to all ${pushed} Zot registries.`,
-      };
-    } catch {
-      return {
-        status: "error" as const,
-        message: `Docker push failed for ${request.image}. Build it first and verify the Zot service is reachable.`,
       };
     }
   });

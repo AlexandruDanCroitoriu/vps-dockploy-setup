@@ -32,7 +32,9 @@ export default async function ProjectsPage() {
   const projectInventories = await Promise.all(
     projects.flatMap((project) =>
       project.imageTargets.map(async (target) => {
-      const localResult = await listLocalDockerImages(target.imageRepository).then(
+        const localResult = await listLocalDockerImages(
+          target.imageRepository,
+        ).then(
           (images) => ({ images, error: "" }),
           (error) => ({
             images: [],
@@ -42,38 +44,36 @@ export default async function ProjectsPage() {
           }),
         );
         const registries = await Promise.all(
-          instanceRegistries.map(async (registryTarget) => ({
-            instanceId: registryTarget.instanceId,
-            instanceName: registryTarget.instanceName,
-            host: registryTarget.registry?.host ?? "",
-            publishedImages: registryTarget.registry
+          instanceRegistries.map(async (registryTarget) => {
+            const registry = registryTarget.registry;
+            const images = registry
               ? await getFreshZotRegistryImages(
-                  registryTarget.registry,
+                  registry,
                   target.imageRepository,
-                ).then(
-                  async (images) =>
-                    Promise.all(
-                      images
-                        .filter((image) =>
-                          localResult.images.some(
-                            (localImage) => localImage.tag === image.tag,
-                          ),
-                        )
-                        .map(async (image) => ({
-                          tag: image.tag,
-                          digest: image.digest,
-                          configDigest:
-                            await getZotRegistryImageConfigDigest(
-                              registryTarget.registry!,
-                              target.imageRepository,
-                              image.tag,
-                            ),
-                        })),
+                ).catch(() => [])
+              : [];
+            const imagesWithConfig = registry
+              ? await Promise.all(
+                  images.map(async (image) => ({
+                    ...image,
+                    configDigest: await getZotRegistryImageConfigDigest(
+                      registry,
+                      target.imageRepository,
+                      image.tag,
                     ),
-                  () => [],
+                  })),
                 )
-              : [],
-          })),
+              : [];
+            return {
+              instanceId: registryTarget.instanceId,
+              instanceName: registryTarget.instanceName,
+              host: registry?.host ?? "",
+              images: imagesWithConfig,
+              publishedImages: imagesWithConfig.filter(
+                (image) => image.current,
+              ),
+            };
+          }),
         );
         return { project, target, localResult, registries };
       }),
@@ -119,8 +119,7 @@ export default async function ProjectsPage() {
                 dockerAvailable={!localResult.error}
                 initialJob={
                   jobs.find(
-                    (job) =>
-                      job.projectName === `${project.name}:${target.id}`,
+                    (job) => job.projectName === `${project.name}:${target.id}`,
                   ) ?? null
                 }
                 embedded={inventories.length > 1}

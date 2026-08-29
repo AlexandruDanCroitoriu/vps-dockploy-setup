@@ -61,7 +61,17 @@ function storefrontUrl(
       ) || service.name.toLowerCase().includes("vendure-storefront"),
   );
   const storefront =
-    storefronts.find((service) => service.status === "running") ??
+    storefronts.find(
+      (service) =>
+        service.status === "running" &&
+        (service.sourcePath?.endsWith("/apps/storefront") ||
+          service.name.toLowerCase() === "vendure-storefront"),
+    ) ??
+    storefronts.find(
+      (service) =>
+        service.sourcePath?.endsWith("/apps/storefront") ||
+        service.name.toLowerCase() === "vendure-storefront",
+    ) ??
     storefronts[0];
   const folder =
     storefront?.sourcePath?.split("/").at(-1) ||
@@ -194,6 +204,7 @@ export async function configureResendDomainAction(
         MAIL_FROM_ADDRESS: `account@${rootDomain}`,
         MAIL_FROM_NAME: instance.name,
         VENDURE_STOREFRONT_URL: storefrontUrl(rootDomain, services),
+        VENDURE_STOREFRONT_CLEAN_URL: `https://storefront-clean.${rootDomain}`,
       };
       const projectEnvironment = mergeDokployProjectEnv(
         project.env,
@@ -221,7 +232,6 @@ export async function configureResendDomainAction(
         configuredBackends += 1;
       }
     }
-    revalidatePath("/resend");
     revalidatePath("/cloudflare");
     return {
       status: "success",

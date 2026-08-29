@@ -111,7 +111,8 @@ The authenticated `Projects` page lists directories under the repository's
 and pushed to the Zot registry on the active Dokploy instance. Local development
 uses the existing checkout. Generated production deployments enable a managed
 checkout at `/app/data/repository`, clone the public repository on first access,
-and update it with the **Refresh projects** button.
+fast-forward it when the Projects page is first opened after a process start,
+and update it again with the **Refresh projects** button.
 
 1. Create and deploy the Zot service on the active Dokploy instance, with an
    enabled HTTPS domain.

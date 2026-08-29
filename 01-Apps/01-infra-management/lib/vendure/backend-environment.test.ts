@@ -102,6 +102,7 @@ describe("Vendure backend environment", () => {
           'SMTP_PASSWORD="re_sending-key"',
           'MAIL_FROM_ADDRESS="account@example.com"',
           'VENDURE_STOREFRONT_URL="https://storefront.example.com"',
+          'VENDURE_STOREFRONT_CLEAN_URL="https://storefront-clean.example.com"',
           'UNRELATED_VALUE="ignored"',
         ].join("\n"),
       ),
@@ -113,6 +114,7 @@ describe("Vendure backend environment", () => {
       SMTP_PASSWORD: "re_sending-key",
       MAIL_FROM_ADDRESS: "account@example.com",
       VENDURE_STOREFRONT_URL: "https://storefront.example.com",
+      VENDURE_STOREFRONT_CLEAN_URL: "https://storefront-clean.example.com",
     });
   });
 
@@ -129,6 +131,7 @@ describe("Vendure backend environment", () => {
           'MAIL_FROM_ADDRESS="account@example.com"',
           'MAIL_FROM_NAME="storefront.example.com"',
           'VENDURE_STOREFRONT_URL="https://storefront.example.com"',
+          'VENDURE_STOREFRONT_CLEAN_URL="https://storefront-clean.example.com"',
           'S3_BUCKET="vendure-assets"',
         ].join("\n"),
       ),

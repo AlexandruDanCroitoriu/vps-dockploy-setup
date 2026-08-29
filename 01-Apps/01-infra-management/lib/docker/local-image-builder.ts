@@ -108,19 +108,21 @@ export async function listLocalDockerImages(
   const rows = output
     .split("\n")
     .flatMap(
-      (line): Array<
-        Omit<LocalDockerImage, "createdAt" | "current" | "digests">
-      > => {
-      try {
-        const value = JSON.parse(line) as Record<string, unknown>;
-        const name =
-          typeof value.Repository === "string" ? value.Repository : "";
-        const tag = typeof value.Tag === "string" ? value.Tag : "";
-        const imageId = typeof value.ID === "string" ? value.ID : "";
-        return name && tag && tag !== "<none>" ? [{ name, tag, imageId }] : [];
-      } catch {
-        return [];
-      }
+      (
+        line,
+      ): Array<Omit<LocalDockerImage, "createdAt" | "current" | "digests">> => {
+        try {
+          const value = JSON.parse(line) as Record<string, unknown>;
+          const name =
+            typeof value.Repository === "string" ? value.Repository : "";
+          const tag = typeof value.Tag === "string" ? value.Tag : "";
+          const imageId = typeof value.ID === "string" ? value.ID : "";
+          return name && tag && tag !== "<none>"
+            ? [{ name, tag, imageId }]
+            : [];
+        } catch {
+          return [];
+        }
       },
     );
   const imageIds = [...new Set(rows.map((row) => row.imageId))];

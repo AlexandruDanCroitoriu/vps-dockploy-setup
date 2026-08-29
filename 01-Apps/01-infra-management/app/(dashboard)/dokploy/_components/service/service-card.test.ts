@@ -30,9 +30,9 @@ function application(overrides: Partial<DokployService> = {}): DokployService {
 
 describe("getServiceDomainHref", () => {
   it("opens a Vendure application at its dashboard path", () => {
-    expect(
-      getServiceDomainHref(application({ name: "vendure" }), domain),
-    ).toBe("https://vendure.example.com/dashboard");
+    expect(getServiceDomainHref(application({ name: "vendure" }), domain)).toBe(
+      "https://vendure.example.com/dashboard",
+    );
   });
 
   it("recognizes the Vendure backend source path", () => {

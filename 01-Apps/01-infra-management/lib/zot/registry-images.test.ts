@@ -131,11 +131,13 @@ describe("Zot registry image normalization", () => {
   });
 
   it("loads the image config digest used to match a local Docker image", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({ config: { digest: "sha256:local-image-id" } }),
-      ),
-    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ config: { digest: "sha256:local-image-id" } }),
+        ),
+      );
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(

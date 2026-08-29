@@ -29,6 +29,30 @@ const storefrontUrl = (
 ).replace(/\/$/, "");
 const storefrontDomain = new URL(storefrontUrl).host;
 
+function conventionalCleanStorefrontUrl(primaryUrl: string) {
+  const url = new URL(primaryUrl);
+  if (url.hostname.startsWith("storefront.")) {
+    url.hostname = url.hostname.replace(/^storefront\./, "storefront-clean.");
+    return url.toString().replace(/\/$/, "");
+  }
+  return primaryUrl;
+}
+
+const storefrontCleanUrl = (
+  process.env.VENDURE_STOREFRONT_CLEAN_URL ||
+  conventionalCleanStorefrontUrl(storefrontUrl)
+).replace(/\/$/, "");
+const storefrontCleanDomain = new URL(storefrontCleanUrl).host;
+
+function emailStorefront(requestHeader: string | string[] | undefined) {
+  const identifier = Array.isArray(requestHeader)
+    ? requestHeader[0]
+    : requestHeader;
+  return identifier === "storefront-clean"
+    ? { url: storefrontCleanUrl, brandName: storefrontCleanDomain }
+    : { url: storefrontUrl, brandName: storefrontDomain };
+}
+
 function productionEmailOptions() {
   const required = [
     "SMTP_HOST",
@@ -143,14 +167,19 @@ export const config: VendureConfig = {
       templateLoader: new FileBasedTemplateLoader(
         path.join(__dirname, "../static/email/templates"),
       ),
-      globalTemplateVars: {
-        brandName: storefrontDomain,
-        fromAddress: IS_DEV
-          ? '"Vendure development" <noreply@example.com>'
-          : `"${storefrontDomain}" <${process.env.MAIL_FROM_ADDRESS}>`,
-        verifyEmailAddressUrl: `${storefrontUrl}/verify`,
-        passwordResetUrl: `${storefrontUrl}/password-reset`,
-        changeEmailAddressUrl: `${storefrontUrl}/verify-email-address-change`,
+      globalTemplateVars: async (ctx) => {
+        const storefront = emailStorefront(
+          ctx.req?.headers["x-vendure-storefront"],
+        );
+        return {
+          brandName: storefront.brandName,
+          fromAddress: IS_DEV
+            ? `"${storefront.brandName} development" <noreply@example.com>`
+            : `"${storefront.brandName}" <${process.env.MAIL_FROM_ADDRESS}>`,
+          verifyEmailAddressUrl: `${storefront.url}/verify`,
+          passwordResetUrl: `${storefront.url}/password-reset`,
+          changeEmailAddressUrl: `${storefront.url}/verify-email-address-change`,
+        };
       },
     }),
     DashboardPlugin.init({

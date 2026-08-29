@@ -1,5 +1,5 @@
 # online-store-mi-novia
- 
+
 This project was generated with [`@vendure/create`](https://github.com/vendurehq/vendure/tree/master/packages/create).
 
 Useful links:
@@ -8,11 +8,11 @@ Useful links:
 - [Vendure Discord community](https://www.vendure.io/community)
 - [Vendure on GitHub](https://github.com/vendurehq/vendure)
 - [Vendure plugin template](https://github.com/vendurehq/plugin-template)
- 
+
 ## Directory structure
 
-* `/src` contains the source code of your Vendure server. All your custom code and plugins should reside here.
-* `/static` contains static (non-code) files such as assets (e.g. uploaded images) and email templates.
+- `/src` contains the source code of your Vendure server. All your custom code and plugins should reside here.
+- `/static` contains static (non-code) files such as assets (e.g. uploaded images) and email templates.
 
 ## Development
 
@@ -21,6 +21,13 @@ npm run dev
 ```
 
 will start the Vendure server, [worker](https://www.vendure.io/docs/developer-guide/vendure-worker/) and Dashboard.
+
+Account verification emails use `VENDURE_STOREFRONT_URL` by default. Requests
+from Storefront Clean carry a fixed server-side identifier and use
+`VENDURE_STOREFRONT_CLEAN_URL` for their sender display name and verification
+link. When the clean URL is omitted, the conventional
+`storefront.<domain>` hostname is mapped to `storefront-clean.<domain>`; set the
+variable explicitly for custom hostnames.
 
 ## Build
 
@@ -68,12 +75,12 @@ Here is a breakdown of the command used above:
 
 - `docker run` - run the image we created with `docker build`
 - `-dp 3000:3000` - the `-d` flag means to run in "detached" mode, so it runs in the background and does not take
-control of your terminal. `-p 3000:3000` means to expose port 3000 of the container (which is what Vendure listens
-on by default) as port 3000 on your host machine.
+  control of your terminal. `-p 3000:3000` means to expose port 3000 of the container (which is what Vendure listens
+  on by default) as port 3000 on your host machine.
 - `-e "DB_HOST=host.docker.internal"` - the `-e` option allows you to define environment variables. In this case we
-are setting the `DB_HOST` to point to a special DNS name that is created by Docker desktop which points to the IP of
-the host machine. Note that `host.docker.internal` only exists in a Docker Desktop environment and thus should only be
-used in development.
+  are setting the `DB_HOST` to point to a special DNS name that is created by Docker desktop which points to the IP of
+  the host machine. Note that `host.docker.internal` only exists in a Docker Desktop environment and thus should only be
+  used in development.
 - `--name vendure-server` - we give the container a human-readable name.
 - `vendure` - we are referencing the tag we set up during the build.
 - `npm run start:server` - this last part is the actual command that should be run inside the container.

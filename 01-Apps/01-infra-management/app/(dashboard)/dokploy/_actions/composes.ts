@@ -135,7 +135,8 @@ export async function createComposeAction(
     if (!instance || !isValidHostname(instance.rootDomain)) {
       return {
         status: "error",
-        message: "Configure a valid instance root domain before deploying Garage.",
+        message:
+          "Configure a valid instance root domain before deploying Garage.",
       };
     }
     parameters.s3Endpoint = `https://${s3Host}`;

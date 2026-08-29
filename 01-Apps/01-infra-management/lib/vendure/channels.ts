@@ -28,7 +28,9 @@ async function vendureRequest<T>(
   }
   const payload = (await response.json()) as GraphqlResponse<T>;
   if (payload.errors?.length || !payload.data) {
-    throw new Error(payload.errors?.[0]?.message || "Vendure returned no data.");
+    throw new Error(
+      payload.errors?.[0]?.message || "Vendure returned no data.",
+    );
   }
   return { data: payload.data, response };
 }

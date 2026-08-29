@@ -35,9 +35,7 @@ describe("Vendure channel discovery", () => {
         username: "admin@example.com",
         password: "secret",
       }),
-    ).resolves.toEqual([
-      { id: "1", code: "default", token: "channel-token" },
-    ]);
+    ).resolves.toEqual([{ id: "1", code: "default", token: "channel-token" }]);
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
       "https://vendure.example.com/admin-api",
@@ -54,7 +52,10 @@ describe("Vendure channel discovery", () => {
       new Response(
         JSON.stringify({
           data: {
-            login: { __typename: "InvalidCredentialsError", message: "Invalid credentials" },
+            login: {
+              __typename: "InvalidCredentialsError",
+              message: "Invalid credentials",
+            },
           },
         }),
       ),

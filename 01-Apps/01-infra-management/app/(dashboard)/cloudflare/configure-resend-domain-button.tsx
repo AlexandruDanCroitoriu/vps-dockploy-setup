@@ -5,7 +5,10 @@ import { useRouter } from "next/navigation";
 import { useActionState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { ActionMessage } from "@/components/ui/form-field";
-import { configureResendDomainAction, type ResendSetupState } from "./actions";
+import {
+  configureResendDomainAction,
+  type ResendSetupState,
+} from "../resend/actions";
 
 const initialState: ResendSetupState = { status: "idle", message: "" };
 

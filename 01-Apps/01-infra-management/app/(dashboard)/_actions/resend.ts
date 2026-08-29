@@ -28,8 +28,8 @@ function storefrontUrl(
 ) {
   const storefront = services.find(
     (service) =>
-      service.sourcePath?.startsWith(STOREFRONT_PATH_PREFIX) ||
-      service.name.toLowerCase().startsWith("vendure-storefront"),
+      service.sourcePath === STOREFRONT_PATH_PREFIX ||
+      service.name.toLowerCase() === "vendure-storefront",
   );
   const folder =
     storefront?.sourcePath?.split("/").at(-1) ||
@@ -89,6 +89,7 @@ export async function configureResendAction(
           instance.rootDomain,
           applications,
         ),
+        VENDURE_STOREFRONT_CLEAN_URL: `https://storefront-clean.${instance.rootDomain}`,
       };
       const projectEnvironment = mergeDokployProjectEnv(
         project.env,

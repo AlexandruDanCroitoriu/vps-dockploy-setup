@@ -50,26 +50,7 @@ async function cloneRepository() {
   return repositoryPath;
 }
 
-export async function ensureRepositoryCheckout() {
-  if (!areProjectBuildsEnabled()) {
-    throw new Error("Project builds are disabled.");
-  }
-  if (!usesManagedRepositoryCheckout()) return process.cwd();
-
-  checkoutPromise ??= (async () => {
-    const repositoryPath = getManagedRepositoryPath();
-    return (await exists(path.join(repositoryPath, ".git")))
-      ? repositoryPath
-      : cloneRepository();
-  })().finally(() => {
-    checkoutPromise = null;
-  });
-  return checkoutPromise;
-}
-
-export async function refreshRepositoryCheckout() {
-  const repositoryPath = await ensureRepositoryCheckout();
-  if (!usesManagedRepositoryCheckout()) return repositoryPath;
+async function updateRepository(repositoryPath: string) {
   await execFileAsync(
     "git",
     [
@@ -81,4 +62,28 @@ export async function refreshRepositoryCheckout() {
     { cwd: repositoryPath },
   );
   return repositoryPath;
+}
+
+export async function ensureRepositoryCheckout() {
+  if (!areProjectBuildsEnabled()) {
+    throw new Error("Project builds are disabled.");
+  }
+  if (!usesManagedRepositoryCheckout()) return process.cwd();
+
+  checkoutPromise ??= (async () => {
+    const repositoryPath = getManagedRepositoryPath();
+    return (await exists(path.join(repositoryPath, ".git")))
+      ? updateRepository(repositoryPath)
+      : cloneRepository();
+  })().catch((error) => {
+    checkoutPromise = null;
+    throw error;
+  });
+  return checkoutPromise;
+}
+
+export async function refreshRepositoryCheckout() {
+  const repositoryPath = await ensureRepositoryCheckout();
+  if (!usesManagedRepositoryCheckout()) return repositoryPath;
+  return updateRepository(repositoryPath);
 }

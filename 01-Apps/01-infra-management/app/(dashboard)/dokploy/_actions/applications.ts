@@ -71,17 +71,18 @@ function deployedStorefrontUrl(
     sourcePath: string | null;
     status: string;
   }[],
+  folder: "storefront" | "storefront-clean" = "storefront",
 ) {
   const storefronts = services.filter(
     (service) =>
-      service.sourcePath !== null &&
-      VENDURE_STOREFRONT_PATHS.has(service.sourcePath),
+      service.sourcePath?.endsWith(`/apps/${folder}`) ||
+      service.name.toLowerCase() === `vendure-${folder}`,
   );
   const storefront =
     storefronts.find((service) => service.status === "running") ??
     storefronts[0];
-  const folder = storefront?.sourcePath?.split("/").at(-1) ?? "storefront";
-  return `https://${folder}.${rootDomain}`;
+  const deployedFolder = storefront?.sourcePath?.split("/").at(-1) ?? folder;
+  return `https://${deployedFolder}.${rootDomain}`;
 }
 
 function isInfraManagementApplication(input: {
@@ -418,6 +419,11 @@ export async function createApplicationAction(
           instance.rootDomain,
           environment.services,
         ),
+        VENDURE_STOREFRONT_CLEAN_URL: deployedStorefrontUrl(
+          instance.rootDomain,
+          environment.services,
+          "storefront-clean",
+        ),
       });
       if (projectEnvironment !== project.env) {
         await updateDokployProjectEnv(projectId, projectEnvironment);
@@ -475,6 +481,11 @@ export async function createApplicationAction(
         }
       }
       const storefrontOrigin = `${formData.get("https") === "on" ? "https" : "http"}://${host}`;
+      const storefrontUrlEnvironmentKey = buildPath.endsWith(
+        "/storefront-clean",
+      )
+        ? "VENDURE_STOREFRONT_CLEAN_URL"
+        : "VENDURE_STOREFRONT_URL";
       const storefrontProject = await getFreshDokployProject(projectId);
       const backendSummary = storefrontProject?.environments
         .flatMap((environment) => environment.services)
@@ -497,7 +508,7 @@ export async function createApplicationAction(
       }
       const updatedProjectEnvironment = mergeDokployProjectEnv(
         storefrontProject.env,
-        { VENDURE_STOREFRONT_URL: storefrontOrigin },
+        { [storefrontUrlEnvironmentKey]: storefrontOrigin },
       );
       if (updatedProjectEnvironment !== storefrontProject.env) {
         await updateDokployProjectEnv(projectId, updatedProjectEnvironment);
@@ -506,7 +517,7 @@ export async function createApplicationAction(
         "applications",
         backend.id,
         mergeDokployProjectEnv(backend.env, {
-          VENDURE_STOREFRONT_URL: storefrontOrigin,
+          [storefrontUrlEnvironmentKey]: storefrontOrigin,
         }),
       );
       await deployDokployService("applications", backend.id);

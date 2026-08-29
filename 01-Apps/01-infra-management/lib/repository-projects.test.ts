@@ -82,20 +82,22 @@ describe("local repository project discovery", () => {
     }
 
     const [vendure] = await getRepositoryProjects(appsDirectory);
-    expect(vendure.imageTargets).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        id: "server",
-        imageRepository: "online-store-vendure-server",
-      }),
-      expect.objectContaining({
-        id: "storefront",
-        imageRepository: "online-store-vendure-storefront",
-      }),
-      expect.objectContaining({
-        id: "storefront-clean",
-        imageRepository: "online-store-vendure-storefront-clean",
-      }),
-    ]));
+    expect(vendure.imageTargets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "server",
+          imageRepository: "online-store-vendure-server",
+        }),
+        expect.objectContaining({
+          id: "storefront",
+          imageRepository: "online-store-vendure-storefront",
+        }),
+        expect.objectContaining({
+          id: "storefront-clean",
+          imageRepository: "online-store-vendure-storefront-clean",
+        }),
+      ]),
+    );
     expect(vendure.imageTargets).toHaveLength(3);
     expect(vendure.imageTargets).not.toContainEqual(
       expect.objectContaining({ id: "worker" }),

@@ -123,7 +123,9 @@ export default async function Home({
           }}
         />
       </section>
-      {!addingInstance && <ResendConfiguration configured={isResendConfigured()} />}
+      {!addingInstance && (
+        <ResendConfiguration configured={isResendConfigured()} />
+      )}
     </div>
   );
 }

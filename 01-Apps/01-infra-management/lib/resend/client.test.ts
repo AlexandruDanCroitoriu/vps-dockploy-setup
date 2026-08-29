@@ -55,12 +55,17 @@ describe("Resend management client", () => {
 
   it("creates a domain-scoped sending key", async () => {
     vi.stubEnv("RESEND_API_KEY", "re_management");
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ token: "re_sending" }), { status: 200 }),
-    );
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(JSON.stringify({ token: "re_sending" }), { status: 200 }),
+      );
 
     await expect(
-      createResendSendingKey({ name: "Vendure example.com", domainId: "domain-id" }),
+      createResendSendingKey({
+        name: "Vendure example.com",
+        domainId: "domain-id",
+      }),
     ).resolves.toBe("re_sending");
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.resend.com/api-keys",

@@ -32,3 +32,8 @@ This project was generated with `@vendure/create`.
 
 - Run `npm run build` after changing backend code.
 - Run targeted tests for the package or feature you changed.
+
+## Storefront-specific email links
+
+- Vendure transactional email defaults to `VENDURE_STOREFRONT_URL`. The allowlisted `x-vendure-storefront: storefront-clean` request identifier selects `VENDURE_STOREFRONT_CLEAN_URL` for sender presentation and verification links.
+- Treat both URLs as trusted server configuration. Never construct transactional email URLs from an arbitrary request origin or host header; preserve the default fallback for requests without the clean-storefront identifier.
