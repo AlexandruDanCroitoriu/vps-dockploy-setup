@@ -10,7 +10,7 @@ import {
   getCloudflareZones,
   invalidateCloudflareZones,
   refreshCloudflareZones,
-  renameCloudflareDnsRecord,
+  updateCloudflareDnsRecord,
 } from "@/lib/cloudflare/zones";
 
 export type CloudflareActionState = {
@@ -23,6 +23,7 @@ const DNS_LABEL = "(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)";
 const SUBDOMAIN_PATTERN = new RegExp(
   `^(?:\\*|(?:\\*\\.)?${DNS_LABEL}(?:\\.${DNS_LABEL})*)$`,
 );
+const IPV4_PATTERN = /^(?:\d{1,3}\.){3}\d{1,3}$/;
 async function isAuthenticated() {
   return Boolean((await getServerSession(authOptions))?.user);
 }
@@ -40,6 +41,17 @@ function subdomainName(label: string, zoneName: string) {
     return null;
   }
   return `${normalizedLabel}.${normalizedZone}`;
+}
+
+function ipv4Address(value: string) {
+  const address = value.trim();
+  if (
+    !IPV4_PATTERN.test(address) ||
+    address.split(".").some((part) => Number(part) > 255)
+  ) {
+    return null;
+  }
+  return address;
 }
 
 function safeFailure(error: unknown): CloudflareActionState {
@@ -91,36 +103,103 @@ export async function createSubdomainAction(input: {
   }
 }
 
-export async function renameSubdomainAction(input: {
+export async function updateSubdomainAction(input: {
   zoneId: string;
   zoneName: string;
   recordId: string;
   label: string;
+  ipAddress?: string;
 }): Promise<CloudflareActionState> {
   if (!(await isAuthenticated())) {
     return { status: "error", message: "Your session has expired." };
   }
   const name = subdomainName(input.label, input.zoneName);
+  const ipAddress =
+    input.ipAddress === undefined ? undefined : ipv4Address(input.ipAddress);
   if (
     !ID_PATTERN.test(input.zoneId) ||
     !ID_PATTERN.test(input.recordId) ||
-    !name
+    !name ||
+    (input.ipAddress !== undefined && !ipAddress)
   ) {
-    return { status: "error", message: "Enter a valid subdomain name." };
+    return {
+      status: "error",
+      message:
+        ipAddress === null
+          ? "Enter a valid IPv4 address."
+          : "Enter a valid subdomain name.",
+    };
   }
   try {
-    await renameCloudflareDnsRecord({
+    const zone = (await getCloudflareZones()).find(
+      (candidate) =>
+        candidate.id === input.zoneId && candidate.name === input.zoneName,
+    );
+    const record = zone?.subdomains.find(
+      (candidate) => candidate.id === input.recordId,
+    );
+    if (!record || (ipAddress !== undefined && record.type !== "A")) {
+      return { status: "error", message: "Invalid DNS record." };
+    }
+    await updateCloudflareDnsRecord({
       zoneId: input.zoneId,
       recordId: input.recordId,
       name,
+      ...(ipAddress ? { content: ipAddress } : {}),
     });
     invalidateCloudflareZones();
     revalidatePath("/cloudflare");
-    return { status: "success", message: "Subdomain renamed." };
+    return { status: "success", message: "DNS record updated." };
   } catch (error) {
     return safeFailure(error);
   }
 }
+
+export async function updateAllARecordsAction(input: {
+  zoneId: string;
+  ipAddress: string;
+}): Promise<CloudflareActionState> {
+  if (!(await isAuthenticated())) {
+    return { status: "error", message: "Your session has expired." };
+  }
+  const ipAddress = ipv4Address(input.ipAddress);
+  if (!ID_PATTERN.test(input.zoneId) || !ipAddress) {
+    return { status: "error", message: "Enter a valid IPv4 address." };
+  }
+  try {
+    const zone = (await getCloudflareZones()).find(
+      (candidate) => candidate.id === input.zoneId,
+    );
+    const recordIds = [
+      ...(zone?.apexARecordId ? [zone.apexARecordId] : []),
+      ...(zone?.subdomains
+        .filter((record) => record.type === "A")
+        .map((record) => record.id) ?? []),
+    ];
+    if (recordIds.length === 0) {
+      return { status: "error", message: "This domain has no A records." };
+    }
+    await Promise.all(
+      recordIds.map((recordId) =>
+        updateCloudflareDnsRecord({
+          zoneId: input.zoneId,
+          recordId,
+          content: ipAddress,
+        }),
+      ),
+    );
+    invalidateCloudflareZones();
+    revalidatePath("/cloudflare");
+    return {
+      status: "success",
+      message: `${recordIds.length} A ${recordIds.length === 1 ? "record" : "records"} updated.`,
+    };
+  } catch (error) {
+    return safeFailure(error);
+  }
+}
+
+export const renameSubdomainAction = updateSubdomainAction;
 
 export async function deleteSubdomainAction(input: {
   zoneId: string;

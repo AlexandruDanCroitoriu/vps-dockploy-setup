@@ -17,6 +17,9 @@ vi.mock("@/lib/zot/vendure-backend-image", () => ({
 vi.mock("@/lib/zot/vendure-storefront-image", () => ({
   getVendureStorefrontZotImage: vi.fn(),
 }));
+vi.mock("@/lib/dokploy/vendure-backups", () => ({
+  configureVendureBackups: vi.fn(),
+}));
 vi.mock("@/lib/dokploy", () => ({
   getActiveDokployConfiguration: vi.fn(),
   getDokployProject: vi.fn(),
@@ -24,7 +27,10 @@ vi.mock("@/lib/dokploy", () => ({
   isValidHostname: (value: string) =>
     value === "example.com" || value.endsWith(".example.com"),
   mergeDokployProjectEnv: vi.fn((current: string) => current),
-  parseDokployEnvironmentEntries: vi.fn(() => ({})),
+  parseDokployEnvironmentEntries: vi.fn(() => ({
+    S3_ACCESS_KEY_ID: "garage-access-key",
+    S3_SECRET_ACCESS_KEY: "garage-secret-key",
+  })),
   updateDokployProjectEnv: vi.fn(),
 }));
 
@@ -34,6 +40,7 @@ import { createComposeAction } from "@/app/(dashboard)/dokploy/_actions/composes
 import { createDatabaseAction } from "@/app/(dashboard)/dokploy/_actions/databases";
 import { getVendureBackendZotImage } from "@/lib/zot/vendure-backend-image";
 import { getVendureStorefrontZotImage } from "@/lib/zot/vendure-storefront-image";
+import { configureVendureBackups } from "@/lib/dokploy/vendure-backups";
 import {
   getActiveDokployConfiguration,
   getDokployProject,
@@ -241,6 +248,13 @@ describe("service template route", () => {
       vi.mocked(createComposeAction).mock.calls[0][3].get("definitionId"),
     ).toBe("garage-with-webui");
     expect(createApplicationAction).toHaveBeenCalledTimes(3);
+    expect(configureVendureBackups).toHaveBeenCalledWith({
+      projectId: "project-1",
+      postgresId: "postgres-1",
+      bucket: "",
+      prefix: "",
+      backupTime: "03:00",
+    });
     const backendForm = vi.mocked(createApplicationAction).mock.calls[0][2];
     const cleanForm = vi.mocked(createApplicationAction).mock.calls[1][2];
     const storefrontForm = vi.mocked(createApplicationAction).mock.calls[2][2];

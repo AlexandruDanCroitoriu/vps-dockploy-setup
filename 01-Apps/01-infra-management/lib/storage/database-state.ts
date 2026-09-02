@@ -9,6 +9,7 @@ const SNAPSHOT_VERSION = 1;
 const STATE_TABLES = [
   "dokploy_instances",
   "dokploy_provisioning_jobs",
+  "postgres_restore_state",
 ] as const;
 
 type StateTable = (typeof STATE_TABLES)[number];
@@ -55,6 +56,11 @@ export function exportDatabaseState(
       dokploy_provisioning_jobs: database
         .prepare(
           "SELECT * FROM dokploy_provisioning_jobs ORDER BY created_at, id",
+        )
+        .all() as StateRow[],
+      postgres_restore_state: database
+        .prepare(
+          "SELECT * FROM postgres_restore_state ORDER BY instance_id, postgres_id",
         )
         .all() as StateRow[],
     },
@@ -130,6 +136,7 @@ export function importDatabaseState(
 
   database.transaction(() => {
     database.prepare("DELETE FROM dokploy_provisioning_jobs").run();
+    database.prepare("DELETE FROM postgres_restore_state").run();
     database.prepare("DELETE FROM dokploy_instances").run();
     for (const table of STATE_TABLES) {
       const columns = tableColumns(database, table);

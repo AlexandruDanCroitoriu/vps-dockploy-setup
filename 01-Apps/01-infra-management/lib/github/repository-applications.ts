@@ -103,7 +103,11 @@ const applicationDefinitions: Array<
     "name" | "path" | "kind" | "parentPath" | "repeatable" | "deploymentName"
   >
 > = [
-  { name: "01-infra-management", path: "01-Apps/01-infra-management" },
+  {
+    name: "01-infra-management",
+    path: "01-Apps/01-infra-management",
+    repeatable: true,
+  },
   {
     name: "vendure-backend",
     path: "01-Apps/02-Online-Store-Vendure/apps/server",

@@ -14,6 +14,9 @@ vi.mock("@/lib/storage/dokploy-instances", () => ({
 vi.mock("@/lib/dokploy/sidebar-project-snapshot", () => ({
   refreshSidebarProjectSnapshot: vi.fn(),
 }));
+vi.mock("@/lib/dokploy/r2-destinations", () => ({
+  syncAllR2BucketsToDokployInstance: vi.fn(),
+}));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/vps/bootstrap-dokploy", () => ({
   runDokployBootstrapStep: vi.fn(),

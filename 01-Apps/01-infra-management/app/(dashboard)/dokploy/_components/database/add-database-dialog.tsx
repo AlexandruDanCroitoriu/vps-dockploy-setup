@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { type FormEvent, useRef, useState } from "react";
 import {
-  notifyProjectsChanged,
   notifyProjectServiceCreation,
   submitProjectServiceCreation,
 } from "@/lib/project-events";
@@ -78,9 +77,11 @@ function generatePassword() {
 export function AddDatabaseDialog({
   projectId,
   environments,
+  r2Buckets = [],
 }: {
   projectId: string;
   environments: Array<{ environmentId: string; name: string }>;
+  r2Buckets?: string[];
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isListOpen, setIsListOpen] = useState(false);
@@ -135,7 +136,6 @@ export function AddDatabaseDialog({
           serviceId: result.createdService.id,
         });
         router.refresh();
-        notifyProjectsChanged();
       } else {
         notifyProjectServiceCreation({ phase: "failed", projectId, requestId });
       }
@@ -151,7 +151,6 @@ export function AddDatabaseDialog({
       });
     }
     router.refresh();
-    notifyProjectsChanged();
   }
 
   function openDialog() {
@@ -336,6 +335,46 @@ export function AddDatabaseDialog({
                   description="Start the database's first deployment immediately."
                   className="sm:col-span-2"
                 />
+                {type === "postgres" && (
+                  <>
+                    <FormField label="R2 backup bucket">
+                      <select
+                        name="backupBucket"
+                        required
+                        defaultValue=""
+                        className={inputClassName}
+                      >
+                        <option value="" disabled>
+                          Select a bucket
+                        </option>
+                        {r2Buckets.map((bucket) => (
+                          <option key={bucket} value={bucket}>
+                            {bucket}
+                          </option>
+                        ))}
+                      </select>
+                    </FormField>
+                    <FormField label="R2 backup folder">
+                      <input
+                        name="backupPrefix"
+                        required
+                        maxLength={200}
+                        pattern="[a-zA-Z0-9/_-]+"
+                        defaultValue={`${projectId}/postgres`}
+                        className={inputClassName}
+                      />
+                    </FormField>
+                    <FormField label="Daily backup time">
+                      <input
+                        name="backupTime"
+                        type="time"
+                        required
+                        defaultValue="02:00"
+                        className={inputClassName}
+                      />
+                    </FormField>
+                  </>
+                )}
               </div>
 
               <div className="flex justify-end gap-2 border-t border-gray-200 px-5 py-4 dark:border-white/10">

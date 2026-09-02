@@ -1,5 +1,4 @@
 import { CubeIcon, FolderIcon } from "@heroicons/react/24/outline";
-import Link from "next/link";
 import { Suspense } from "react";
 
 import {
@@ -19,8 +18,6 @@ import {
 import { AddDatabaseDialog } from "../database/add-database-dialog";
 import { AddApplicationDialog } from "../application/add-application-dialog";
 import { AddComposeDialog } from "../compose/add-compose-dialog";
-import { EnvironmentVariableEditor } from "../environment/environment-variable-editor";
-import { ProjectNameEditor } from "./project-name-editor";
 import { ProjectSettingsMenu } from "./project-settings-menu";
 import { getServiceDisplayName, ServiceCard } from "../service/service-card";
 import {
@@ -30,11 +27,14 @@ import {
 import { ServiceStatusRefresh } from "../service/service-status-refresh";
 import { DeletedServiceGuard } from "../service/deleted-service-guard";
 import { ServiceTemplateDropdown } from "../service-template/service-template-dropdown";
+import {
+  getGarageBackupConfiguration,
+  getPostgresBackupConfiguration,
+} from "@/lib/dokploy/vendure-backups";
+import type { CloudflareDomainOption } from "../domains/cloudflare-hostname-fields";
 
 export function ProjectCard({
   project,
-  editableName = false,
-  linkServices = false,
   serviceActionsMenu = false,
   githubProviders,
   repositoryApplications,
@@ -47,10 +47,10 @@ export function ProjectCard({
   dokployRootUrl = "",
   unavailableComposeDefinitionIds = [],
   deployedRepositoryApplications,
+  r2Buckets = [],
+  cloudflareDomains = [],
 }: {
   project: DokployProject;
-  editableName?: boolean;
-  linkServices?: boolean;
   serviceActionsMenu?: boolean;
   githubProviders?: DokployGithubProvider[];
   repositoryApplications?: RepositoryApplication[];
@@ -69,6 +69,8 @@ export function ProjectCard({
   dokployRootUrl?: string;
   unavailableComposeDefinitionIds?: string[];
   deployedRepositoryApplications?: RepositoryApplicationDeployment[];
+  r2Buckets?: string[];
+  cloudflareDomains?: CloudflareDomainOption[];
 }) {
   const services = project.environments.flatMap((environment) =>
     environment.services.map((service) => ({
@@ -88,7 +90,7 @@ export function ProjectCard({
     );
 
   return (
-    <article className="relative overflow-visible rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-gray-800/40">
+    <article className="relative h-full overflow-visible rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-gray-800/40">
       <div className="p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
@@ -106,19 +108,7 @@ export function ProjectCard({
                 </a>
               )}
               <h2 className="min-w-0 truncate text-base font-semibold text-gray-900 dark:text-gray-100">
-                {editableName ? (
-                  <ProjectNameEditor
-                    projectId={project.projectId}
-                    initialName={project.name}
-                  />
-                ) : (
-                  <Link
-                    href={`/dokploy/${encodeURIComponent(project.projectId)}`}
-                    className="hover:text-indigo-600 dark:hover:text-indigo-300"
-                  >
-                    {project.name}
-                  </Link>
-                )}
+                {project.name}
               </h2>
             </div>
             {project.description && (
@@ -158,6 +148,7 @@ export function ProjectCard({
                   vendureStorefrontImageAvailability ?? {}
                 }
                 rootDomain={rootDomain}
+                cloudflareDomains={cloudflareDomains}
                 deployedApplications={
                   deployedRepositoryApplications ??
                   getRepositoryApplicationDeployments([project])
@@ -179,33 +170,33 @@ export function ProjectCard({
                 environmentId: environment.environmentId,
                 name: environment.name,
               }))}
+              r2Buckets={r2Buckets}
             />
             <AddComposeDialog
               projectId={project.projectId}
               environmentId={project.environments[0]?.environmentId}
               definitions={composeServiceOptions}
               rootDomain={rootDomain}
+              cloudflareDomains={cloudflareDomains}
               defaultLoginCredentials={defaultServiceCredentials}
               unavailableDefinitionIds={unavailableComposeDefinitionIds}
+              r2Buckets={r2Buckets}
             />
             <ServiceTemplateDropdown
               projectId={project.projectId}
               environmentExists={project.environments.length > 0}
               rootDomain={rootDomain}
+              cloudflareDomains={cloudflareDomains}
               services={services.map(({ service }) => ({
                 type: service.type,
                 name: service.name,
               }))}
-            />
-            <EnvironmentVariableEditor
-              target="project"
-              targetId={project.projectId}
-              targetName={project.name}
-              initialValue={project.env}
+              r2Buckets={r2Buckets}
             />
             <ProjectSettingsMenu
               projectId={project.projectId}
               projectName={project.name}
+              environment={project.env}
               services={services.map(({ service }) => ({
                 id: service.id,
                 type: service.type,
@@ -239,9 +230,9 @@ export function ProjectCard({
               <ProjectServices
                 services={services}
                 projectId={project.projectId}
-                linkServices={linkServices}
                 serviceActionsMenu={serviceActionsMenu}
                 dokployRootUrl={dokployRootUrl}
+                r2Buckets={r2Buckets}
               />
             </Suspense>
           )}
@@ -271,21 +262,63 @@ function ServiceCardLoading({ service }: { service: DokployService }) {
 async function ProjectServices({
   services,
   projectId,
-  linkServices,
   serviceActionsMenu,
   dokployRootUrl,
+  r2Buckets,
 }: {
   services: Array<{ environmentId: string; service: DokployService }>;
   projectId: string;
-  linkServices: boolean;
   serviceActionsMenu: boolean;
   dokployRootUrl: string;
+  r2Buckets: string[];
 }) {
   const presentation = await getServicePresentationSnapshot(
     projectId,
     services.map(({ service }) => service),
   );
   const resolvedServices = presentation.services;
+  const garageConfigurations = new Map(
+    await Promise.all(
+      resolvedServices.flatMap((service) => {
+        const isGarage =
+          service.type === "compose" &&
+          ["garage", "garage with ui"].includes(
+            service.name.trim().toLowerCase(),
+          );
+        return isGarage
+          ? [
+              getGarageBackupConfiguration(service.id)
+                .catch(() => ({
+                  bucket: "",
+                  prefix: "garage",
+                  time: "03:00",
+                  configured: false,
+                }))
+                .then((configuration) => [service.id, configuration] as const),
+            ]
+          : [];
+      }),
+    ),
+  );
+  const postgresConfigurations = new Map(
+    await Promise.all(
+      resolvedServices.flatMap((service) =>
+        service.type === "postgres"
+          ? [
+              getPostgresBackupConfiguration(service.id)
+                .catch(() => ({
+                  bucket: "",
+                  prefix: `${projectId}/postgres`,
+                  time: "02:00",
+                  configured: false,
+                  recoveryPoints: [],
+                }))
+                .then((configuration) => [service.id, configuration] as const),
+            ]
+          : [],
+      ),
+    ),
+  );
 
   return (
     <>
@@ -311,12 +344,23 @@ async function ProjectServices({
                 }
                 domains={presentation.domains[index] ?? []}
                 projectId={projectId}
-                serviceActionsMenu={serviceActionsMenu}
-                href={
-                  linkServices
-                    ? `/dokploy/${encodeURIComponent(projectId)}/services/${service.type}/${encodeURIComponent(service.id)}`
+                garageBackup={
+                  garageConfigurations.has(service.id)
+                    ? {
+                        buckets: r2Buckets,
+                        configuration: garageConfigurations.get(service.id)!,
+                      }
                     : undefined
                 }
+                postgresBackup={
+                  postgresConfigurations.has(service.id)
+                    ? {
+                        buckets: r2Buckets,
+                        configuration: postgresConfigurations.get(service.id)!,
+                      }
+                    : undefined
+                }
+                serviceActionsMenu={serviceActionsMenu}
               />
             </OptimisticServiceVisibilityGuard>
           </DeletedServiceGuard>

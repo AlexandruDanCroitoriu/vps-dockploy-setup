@@ -25,6 +25,7 @@ describe("Infra Management deployment environment", () => {
         authSecret: "auth-secret",
         nextAuthUrl: "https://infra.example.com",
         cloudflareApiToken: "placeholder-token/with-special-characters",
+        cloudflareAccountId: "account-id",
         resendApiKey: "re_management-key",
       }),
     ).toContain(
@@ -37,6 +38,18 @@ describe("Infra Management deployment environment", () => {
         authSecret: "auth-secret",
         nextAuthUrl: "https://infra.example.com",
         cloudflareApiToken: "token",
+        cloudflareAccountId: "account-id",
+        resendApiKey: "re_management-key",
+      }),
+    ).toContain('CLOUDFLARE_ACCOUNT_ID="account-id"');
+    expect(
+      serializeInfraManagementEnvironment({
+        username: "admin@example.com",
+        password: "password",
+        authSecret: "auth-secret",
+        nextAuthUrl: "https://infra.example.com",
+        cloudflareApiToken: "token",
+        cloudflareAccountId: "account-id",
         resendApiKey: "re_management-key",
       }),
     ).toContain('PROJECT_BUILDS_ENABLED="true"');
@@ -47,6 +60,7 @@ describe("Infra Management deployment environment", () => {
         authSecret: "auth-secret",
         nextAuthUrl: "https://infra.example.com",
         cloudflareApiToken: "token",
+        cloudflareAccountId: "account-id",
         resendApiKey: "re_management-key",
       }),
     ).toContain('RESEND_API_KEY="re_management-key"');

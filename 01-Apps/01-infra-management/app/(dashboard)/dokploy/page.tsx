@@ -13,6 +13,8 @@ import { getUnavailableComposeServiceDefinitionIds } from "@/compose-services/re
 import { getInfraManagementZotImage } from "@/lib/zot/infra-management-image";
 import { getVendureBackendZotImage } from "@/lib/zot/vendure-backend-image";
 import { getVendureStorefrontZotImage } from "@/lib/zot/vendure-storefront-image";
+import { listCloudflareR2Buckets } from "@/lib/cloudflare/r2";
+import { getCloudflareZones } from "@/lib/cloudflare/zones";
 
 import { ProjectCard } from "./_components/project/project-card";
 import { CreateProjectDialog } from "./_components/project/create-project-dialog";
@@ -70,6 +72,8 @@ async function ProjectsContent() {
     vendureBackendImage,
     storefrontImage,
     storefrontCleanImage,
+    r2Buckets,
+    cloudflareZones,
   ] = await Promise.all([
     getActiveDokployProjectSnapshot(),
     getDokployGithubProviders().catch(() => []),
@@ -83,6 +87,8 @@ async function ProjectsContent() {
     getVendureStorefrontZotImage(
       "/01-Apps/02-Online-Store-Vendure/apps/storefront-clean",
     ),
+    listCloudflareR2Buckets().catch(() => []),
+    getCloudflareZones().catch(() => []),
   ]);
   const unavailableComposeDefinitionIds =
     getUnavailableComposeServiceDefinitionIds(projects);
@@ -96,43 +102,69 @@ async function ProjectsContent() {
           No projects were returned by Dokploy.
         </div>
       ) : (
-        <div className="mt-4 grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
-          {projects.map((project) => (
-            <div key={project.projectId}>
-              <ProjectCard
-                project={project}
-                linkServices
-                serviceActionsMenu
-                githubProviders={githubProviders}
-                repositoryApplications={repositoryApplications.applications}
-                repositoryApplicationsError={repositoryApplications.error}
-                infraManagementImageAvailability={{
-                  available: infraManagementImage.available,
-                  message: infraManagementImage.message,
-                }}
-                vendureBackendImageAvailability={{
-                  available: vendureBackendImage.available,
-                  message: vendureBackendImage.message,
-                }}
-                vendureStorefrontImageAvailability={{
-                  "/01-Apps/02-Online-Store-Vendure/apps/storefront":
-                    storefrontImage,
-                  "/01-Apps/02-Online-Store-Vendure/apps/storefront-clean":
-                    storefrontCleanImage,
-                }}
-                rootDomain={activeInstance?.rootDomain ?? ""}
-                defaultServiceCredentials={{
-                  username: activeInstance?.defaultServiceUsername ?? "admin",
-                  password: activeInstance?.defaultServicePassword ?? "admin",
-                }}
-                dokployRootUrl={activeInstance?.rootUrl ?? ""}
-                unavailableComposeDefinitionIds={
-                  unavailableComposeDefinitionIds
-                }
-                deployedRepositoryApplications={deployedRepositoryApplications}
-              />
-            </div>
-          ))}
+        <div className="mt-4 grid grid-flow-row-dense grid-cols-1 gap-4 lg:grid-cols-2">
+          {projects.map((project) => {
+            const serviceCount = project.environments.reduce(
+              (count, environment) => count + environment.services.length,
+              0,
+            );
+            const rowSpan = Math.max(1, Math.ceil((serviceCount + 1) / 3));
+
+            return (
+              <div
+                key={project.projectId}
+                className="min-w-0"
+                style={{ gridRow: `span ${rowSpan} / span ${rowSpan}` }}
+              >
+                <ProjectCard
+                  project={project}
+                  serviceActionsMenu
+                  githubProviders={githubProviders}
+                  repositoryApplications={repositoryApplications.applications}
+                  repositoryApplicationsError={repositoryApplications.error}
+                  infraManagementImageAvailability={{
+                    available: infraManagementImage.available,
+                    message: infraManagementImage.message,
+                  }}
+                  vendureBackendImageAvailability={{
+                    available: vendureBackendImage.available,
+                    message: vendureBackendImage.message,
+                  }}
+                  vendureStorefrontImageAvailability={{
+                    "/01-Apps/02-Online-Store-Vendure/apps/storefront":
+                      storefrontImage,
+                    "/01-Apps/02-Online-Store-Vendure/apps/storefront-clean":
+                      storefrontCleanImage,
+                  }}
+                  rootDomain={activeInstance?.rootDomain ?? ""}
+                  defaultServiceCredentials={{
+                    username: activeInstance?.defaultServiceUsername ?? "admin",
+                    password: activeInstance?.defaultServicePassword ?? "admin",
+                  }}
+                  dokployRootUrl={activeInstance?.rootUrl ?? ""}
+                  unavailableComposeDefinitionIds={
+                    unavailableComposeDefinitionIds
+                  }
+                  deployedRepositoryApplications={
+                    deployedRepositoryApplications
+                  }
+                  r2Buckets={r2Buckets.map((bucket) => bucket.name)}
+                  cloudflareDomains={cloudflareZones.map((zone) => ({
+                    name: zone.name,
+                    subdomains: [
+                      ...new Set(
+                        zone.subdomains
+                          .filter((record) => record.type === "A")
+                          .map((record) =>
+                            record.name.slice(0, -(zone.name.length + 1)),
+                          ),
+                      ),
+                    ].sort((left, right) => left.localeCompare(right)),
+                  }))}
+                />
+              </div>
+            );
+          })}
         </div>
       )}
     </>

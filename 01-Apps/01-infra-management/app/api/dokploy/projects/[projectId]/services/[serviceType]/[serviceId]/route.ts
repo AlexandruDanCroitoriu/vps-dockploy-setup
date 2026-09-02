@@ -13,7 +13,11 @@ import {
   DOKPLOY_SERVICE_TYPES,
   getFreshDokployProject,
   getFreshDokployServiceStatus,
+  getDokployDeployments,
+  getDokployDomainServiceNames,
   getDokployDomains,
+  getDokployRawComposeFile,
+  getDokployRunningContainerOptions,
   getDokployProject,
   getDokployServiceStatus,
   isDatabaseService,
@@ -26,6 +30,11 @@ import {
   updateDokployServiceEnv,
   type DokployServiceType,
 } from "@/lib/dokploy";
+import { listCloudflareR2Buckets } from "@/lib/cloudflare/r2";
+import {
+  getGarageBackupConfiguration,
+  getPostgresBackupConfiguration,
+} from "@/lib/dokploy/vendure-backups";
 import { refreshSidebarProjectSnapshot } from "@/lib/dokploy/sidebar-project-snapshot";
 import {
   isVendureBackendService,
@@ -88,6 +97,45 @@ export async function GET(
       serviceType === "applications" || serviceType === "compose"
         ? await getDokployDomains(serviceType, serviceId).catch(() => [])
         : [];
+    const supportsDomains =
+      serviceType === "applications" || serviceType === "compose";
+    const isGarage =
+      serviceType === "compose" &&
+      ["garage", "garage with ui"].includes(service.name.trim().toLowerCase());
+    const isPostgres = serviceType === "postgres";
+    const [
+      deployments,
+      domainServiceNames,
+      runningContainerOptions,
+      composeFile,
+      buckets,
+      garageBackup,
+      postgresBackup,
+    ] = await Promise.all([
+      getDokployDeployments(service).catch(() => []),
+      supportsDomains
+        ? getDokployDomainServiceNames(service).catch(() => [])
+        : Promise.resolve([]),
+      supportsDomains
+        ? getDokployRunningContainerOptions(service).catch(() => [])
+        : Promise.resolve([]),
+      serviceType === "compose"
+        ? getDokployRawComposeFile(serviceId).catch(() => null)
+        : Promise.resolve(null),
+      isGarage || isPostgres
+        ? listCloudflareR2Buckets().catch(() => [])
+        : Promise.resolve([]),
+      isGarage
+        ? getGarageBackupConfiguration(serviceId).catch(() => null)
+        : Promise.resolve(null),
+      isPostgres
+        ? getPostgresBackupConfiguration(serviceId).catch(() => null)
+        : Promise.resolve(null),
+    ]);
+    const fallbackServiceNames =
+      serviceType === "applications" ? [service.appName || service.name] : [];
+    const serviceNames =
+      domainServiceNames.length > 0 ? domainServiceNames : fallbackServiceNames;
     return Response.json({
       id: service.id,
       name: service.name,
@@ -96,6 +144,16 @@ export async function GET(
       status: service.status,
       credentials: service.credentials,
       domains,
+      deployments,
+      serviceNames,
+      serviceOptions:
+        runningContainerOptions.length > 0
+          ? runningContainerOptions
+          : serviceNames.map((name) => ({ value: name, label: name })),
+      composeFile,
+      buckets: buckets.map((bucket) => bucket.name),
+      garageBackup,
+      postgresBackup,
     });
   } catch {
     return Response.json(

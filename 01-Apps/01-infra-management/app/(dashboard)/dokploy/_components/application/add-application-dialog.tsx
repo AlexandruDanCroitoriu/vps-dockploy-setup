@@ -20,7 +20,6 @@ import type {
   RepositoryApplicationDeployment,
 } from "@/lib/github/repository-applications";
 import {
-  notifyProjectsChanged,
   notifyProjectServiceCreation,
   submitProjectServiceCreation,
 } from "@/lib/project-events";
@@ -30,6 +29,10 @@ import {
   getVendureChannelsAction,
 } from "../../_actions/applications";
 import type { ActionState } from "../../_actions/shared";
+import {
+  CloudflareHostnameFields,
+  type CloudflareDomainOption,
+} from "../domains/cloudflare-hostname-fields";
 import { RepositoryApplicationDropdown } from "./repository-application-dropdown";
 
 const initialState: ActionState = { status: "idle", message: "" };
@@ -62,6 +65,7 @@ export function AddApplicationDialog({
   repositoryApplications,
   repositoryApplicationsError,
   rootDomain,
+  cloudflareDomains = [],
   deployedApplications,
   vendureBackendDeployment,
   infraManagementImageAvailability,
@@ -74,6 +78,7 @@ export function AddApplicationDialog({
   repositoryApplications: RepositoryApplication[];
   repositoryApplicationsError: string;
   rootDomain: string;
+  cloudflareDomains?: CloudflareDomainOption[];
   deployedApplications: RepositoryApplicationDeployment[];
   vendureBackendDeployment?: RepositoryApplicationDeployment;
   infraManagementImageAvailability: {
@@ -96,9 +101,6 @@ export function AddApplicationDialog({
   const [watchPathsEdited, setWatchPathsEdited] = useState(false);
   const [applicationName, setApplicationName] = useState("");
   const [domainHost, setDomainHost] = useState("");
-  const [domainSubdomain, setDomainSubdomain] = useState("");
-  const [domainGenerationError, setDomainGenerationError] = useState("");
-  const [domainGenerationPending, startDomainGeneration] = useTransition();
   const [state, setState] = useState(initialState);
   const [vendureBackendId, setVendureBackendId] = useState("");
   const [vendureChannels, setVendureChannels] = useState<
@@ -144,7 +146,6 @@ export function AddApplicationDialog({
           serviceId: result.createdService.id,
         });
         router.refresh();
-        notifyProjectsChanged();
       } else {
         notifyProjectServiceCreation({ phase: "failed", projectId, requestId });
       }
@@ -160,7 +161,6 @@ export function AddApplicationDialog({
       });
     }
     router.refresh();
-    notifyProjectsChanged();
   }
 
   function updateBuildPath(value: string) {
@@ -192,8 +192,6 @@ export function AddApplicationDialog({
           ? `vendure.${rootDomain}`
           : "",
     );
-    setDomainSubdomain("");
-    setDomainGenerationError("");
     const selectedVendureBackend =
       application.kind === "vendure-storefront"
         ? vendureBackendDeployment
@@ -228,18 +226,6 @@ export function AddApplicationDialog({
         setVendureChannelToken(defaultChannel?.token ?? "");
       });
     }
-  }
-
-  function generateDomain() {
-    setDomainGenerationError("");
-    startDomainGeneration(async () => {
-      const result = await generateApplicationDomainAction(applicationName);
-      if (result.status === "error") {
-        setDomainGenerationError(result.message);
-        return;
-      }
-      setDomainHost(result.domain);
-    });
   }
 
   const usesInfraManagementDefaults =
@@ -407,7 +393,24 @@ export function AddApplicationDialog({
 
             {usesInfraManagementDefaults || usesVendurePreset ? (
               <>
-                <input type="hidden" name="name" value={applicationName} />
+                {usesInfraManagementDefaults ? (
+                  <FormField label="Application name" htmlFor="app-name">
+                    <input
+                      id="app-name"
+                      name="name"
+                      required
+                      maxLength={63}
+                      pattern="[a-zA-Z0-9._-]+"
+                      value={applicationName}
+                      onChange={(event) =>
+                        setApplicationName(event.target.value)
+                      }
+                      className={inputClassName}
+                    />
+                  </FormField>
+                ) : (
+                  <input type="hidden" name="name" value={applicationName} />
+                )}
                 <input
                   type="hidden"
                   name="githubId"
@@ -589,82 +592,18 @@ export function AddApplicationDialog({
               </>
             )}
 
-            {usesInfraManagementDefaults ? (
-              <FormField
-                label="Subdomain"
-                htmlFor="app-subdomain"
-                optional
-                className="col-span-full"
-              >
-                <div className="mt-1.5 flex min-w-0 items-center rounded-md border border-gray-300 bg-white focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-500/20 dark:border-white/10 dark:bg-gray-900">
-                  <input
-                    id="app-subdomain"
-                    name="subdomain"
-                    type="text"
-                    value={domainSubdomain}
-                    onChange={(event) => setDomainSubdomain(event.target.value)}
-                    placeholder="optional"
-                    className="min-w-0 flex-1 border-0 bg-transparent px-3 py-2 text-sm outline-none"
-                  />
-                  <span className="shrink-0 border-l border-gray-200 px-3 text-sm text-gray-500 dark:border-white/10 dark:text-gray-400">
-                    .{rootDomain}
-                  </span>
-                </div>
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Leave blank to use {rootDomain}.
-                </p>
-              </FormField>
-            ) : (
-              <FormField
-                label="Domain hostname"
-                htmlFor="app-host"
-                optional
-                className="col-span-full"
-              >
-                <div
-                  className={
-                    usesVendurePreset
-                      ? "mt-1.5 w-full"
-                      : "mt-1.5 grid w-full grid-cols-[minmax(0,1fr)_auto] gap-2"
-                  }
-                >
-                  <input
-                    id="app-host"
-                    name="host"
-                    type="text"
-                    required={usesVendurePreset}
-                    value={domainHost}
-                    onChange={(event) => {
-                      setDomainHost(event.target.value);
-                      setDomainGenerationError("");
-                    }}
-                    placeholder="app.example.com"
-                    className={`${inputClassName} !mt-0 min-w-0`}
-                  />
-                  {!usesVendurePreset && (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      disabled={
-                        domainGenerationPending || !applicationName.trim()
-                      }
-                      onClick={generateDomain}
-                      className="h-full shrink-0"
-                    >
-                      {domainGenerationPending ? "Generating…" : "Generate"}
-                    </Button>
-                  )}
-                </div>
-                {domainGenerationError && (
-                  <p
-                    className="mt-1 text-xs text-red-600 dark:text-red-400"
-                    role="alert"
-                  >
-                    {domainGenerationError}
-                  </p>
-                )}
-              </FormField>
-            )}
+            <div className="col-span-full">
+              <CloudflareHostnameFields
+                name="host"
+                value={domainHost}
+                onChange={setDomainHost}
+                domains={cloudflareDomains}
+                required={usesVendurePreset}
+                onGenerate={() =>
+                  generateApplicationDomainAction(applicationName)
+                }
+              />
+            </div>
 
             {usesInfraManagementDefaults || usesVendurePreset ? (
               <input type="hidden" name="port" value="3000" />

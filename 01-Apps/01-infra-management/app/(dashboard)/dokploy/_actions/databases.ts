@@ -10,6 +10,11 @@ import {
   type DokployDatabaseType,
 } from "@/lib/dokploy";
 import {
+  configurePostgresR2Backup,
+  restorePostgresBackup,
+  runPostgresBackupManually,
+} from "@/lib/dokploy/vendure-backups";
+import {
   deployAfterCreateRequested,
   getActionError,
   requireAuthenticatedSession,
@@ -40,6 +45,9 @@ export async function createDatabaseAction(
   const databaseUser = formData.get("databaseUser")?.toString().trim() ?? "";
   const databasePassword = formData.get("databasePassword")?.toString() ?? "";
   const deployAfterCreate = deployAfterCreateRequested(formData);
+  const backupBucket = formData.get("backupBucket")?.toString().trim() ?? "";
+  const backupPrefix = formData.get("backupPrefix")?.toString().trim() ?? "";
+  const backupTime = formData.get("backupTime")?.toString().trim() ?? "";
   const needsDatabaseName = ["postgres", "mysql", "mariadb"].includes(type);
   const needsUser = type !== "redis";
 
@@ -97,6 +105,24 @@ export async function createDatabaseAction(
       projectId,
       mergeDokployProjectEnv(project.env, entries),
     );
+    if (type === "postgres" && backupBucket) {
+      try {
+        await configurePostgresR2Backup({
+          postgresId: databaseId,
+          bucket: backupBucket,
+          prefix: backupPrefix,
+          time: backupTime,
+        });
+      } catch (error) {
+        revalidatePath("/dokploy");
+        revalidatePath(`/dokploy/${projectId}`);
+        return {
+          status: "error",
+          message: `PostgreSQL was created, but its R2 backup could not be configured: ${error instanceof Error ? error.message : "Unknown error"}`,
+          createdService: { id: databaseId, type },
+        };
+      }
+    }
     if (deployAfterCreate) {
       if (!databaseId) {
         revalidatePath("/dokploy");
@@ -139,6 +165,97 @@ export async function createDatabaseAction(
       error,
       "Unable to create the database.",
       "the database",
+    );
+  }
+}
+
+export async function restorePostgresBackupAction(
+  projectId: string,
+  postgresId: string,
+  previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  void previousState;
+  if (!(await requireAuthenticatedSession())) return SESSION_EXPIRED_STATE;
+  try {
+    const backupKey = String(formData.get("backupKey") ?? "");
+    if (!backupKey)
+      return { status: "error", message: "Select a recovery point." };
+    const result = await restorePostgresBackup({ postgresId, backupKey });
+    revalidatePath(`/dokploy/${projectId}`);
+    revalidatePath(
+      `/dokploy/${encodeURIComponent(projectId)}/services/postgres/${encodeURIComponent(postgresId)}`,
+    );
+    return {
+      status: "success",
+      message: result.returnedToPresent
+        ? "PostgreSQL was returned to the safety backup."
+        : "PostgreSQL was restored. A safety backup is available as Return to present.",
+    };
+  } catch (error) {
+    return getActionError(
+      error,
+      error instanceof Error ? error.message : "Unable to restore PostgreSQL.",
+      "the PostgreSQL recovery point",
+    );
+  }
+}
+
+export async function updatePostgresBackupAction(
+  projectId: string,
+  postgresId: string,
+  previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  void previousState;
+  if (!(await requireAuthenticatedSession())) return SESSION_EXPIRED_STATE;
+  try {
+    await configurePostgresR2Backup({
+      postgresId,
+      bucket: String(formData.get("bucket") ?? "").trim(),
+      prefix: String(formData.get("prefix") ?? "").trim(),
+      time: String(formData.get("time") ?? "").trim(),
+    });
+    revalidatePath(`/dokploy/${projectId}`);
+    revalidatePath(
+      `/dokploy/${encodeURIComponent(projectId)}/services/postgres/${encodeURIComponent(postgresId)}`,
+    );
+    revalidatePath("/instance");
+    return {
+      status: "success",
+      message: "PostgreSQL backup configuration saved.",
+    };
+  } catch (error) {
+    return getActionError(
+      error,
+      error instanceof Error ? error.message : "Unable to update the backup.",
+      "the PostgreSQL backup configuration",
+    );
+  }
+}
+
+export async function runPostgresBackupAction(
+  projectId: string,
+  postgresId: string,
+  previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  void previousState;
+  void formData;
+  if (!(await requireAuthenticatedSession())) return SESSION_EXPIRED_STATE;
+  try {
+    await runPostgresBackupManually(postgresId);
+    revalidatePath(`/dokploy/${projectId}`);
+    revalidatePath(
+      `/dokploy/${encodeURIComponent(projectId)}/services/postgres/${encodeURIComponent(postgresId)}`,
+    );
+    revalidatePath("/instance");
+    return { status: "success", message: "PostgreSQL backup started." };
+  } catch (error) {
+    return getActionError(
+      error,
+      error instanceof Error ? error.message : "Unable to start the backup.",
+      "the PostgreSQL backup",
     );
   }
 }

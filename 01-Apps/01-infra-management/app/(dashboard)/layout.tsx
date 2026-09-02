@@ -5,11 +5,7 @@ import {
   getActiveDokployInstanceId,
   getActiveDokployProvisioningJob,
   getDokployInstanceSummaries,
-  getServiceTypeLabel,
-  isDatabaseService,
 } from "@/lib/dokploy";
-import type { SidebarProject } from "@/lib/dokploy/sidebar-project-types";
-import { readSidebarProjectSnapshot } from "@/lib/dokploy/sidebar-project-snapshot";
 import { getDokployInstanceSummary } from "@/lib/storage/dokploy-instances";
 import { areProjectBuildsEnabled } from "@/lib/repository-workspace";
 import { DashboardShell } from "./_components/dashboard-shell/dashboard-shell";
@@ -56,43 +52,12 @@ export default async function DashboardLayout({
     ? [...storedInstances, provisioningSummary]
     : storedInstances;
   const session = await getServerSession(authOptions);
-  const result =
-    dokployReady && activeInstance
-      ? readSidebarProjectSnapshot(activeInstance.id)
-      : { projects: [], error: "" };
-  const projects: SidebarProject[] = result.projects.map(
-    ({ projectId, name, environments }) => ({
-      projectId,
-      name,
-      services: environments.flatMap((environment) =>
-        environment.services.map((service) => ({
-          id: service.id,
-          type: service.type,
-          name: isDatabaseService(service.type)
-            ? getServiceTypeLabel(service.type)
-            : service.name,
-          environmentId: environment.environmentId,
-        })),
-      ),
-    }),
-  );
-  const sidebarStateKey = projects
-    .map(
-      (project) =>
-        `${project.projectId}:${project.services
-          .map((service) => `${service.type}:${service.id}`)
-          .join(",")}`,
-    )
-    .join("|");
   return (
     <DashboardShell
-      key={`${activeInstance?.id ?? "no-active-instance"}:${sidebarStateKey}`}
-      initialProjects={projects}
-      initialProjectsError={result.error}
+      key={activeInstance?.id ?? "no-active-instance"}
       instances={instances}
       activeInstanceId={activeInstance?.id ?? activeInstanceId}
       dokployAvailable={dokployReady}
-      dokployRootUrl={activeInstance?.rootUrl ?? ""}
       projectBuildsEnabled={areProjectBuildsEnabled()}
       userName={session?.user?.name || "Administrator"}
     >

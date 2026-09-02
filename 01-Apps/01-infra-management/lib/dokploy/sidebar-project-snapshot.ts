@@ -119,13 +119,6 @@ export async function getActiveDokployProjectSnapshot(
   return snapshot.projects;
 }
 
-export async function getActiveDokployProjectFromSnapshot(
-  projectId: string,
-): Promise<DokployProject | null> {
-  const projects = await getActiveDokployProjectSnapshot();
-  return projects.find((project) => project.projectId === projectId) ?? null;
-}
-
 export function clearSidebarProjectSnapshot(instanceId: string) {
   snapshots.delete(instanceId);
 }

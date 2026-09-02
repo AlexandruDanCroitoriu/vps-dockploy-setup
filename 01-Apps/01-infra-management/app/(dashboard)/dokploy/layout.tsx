@@ -6,6 +6,6 @@ export default async function DokployLayout({
 }: {
   children: React.ReactNode;
 }) {
-  if (!(await getActiveDokployInstanceSummary())) redirect("/");
+  if (!(await getActiveDokployInstanceSummary())) redirect("/instance");
   return children;
 }

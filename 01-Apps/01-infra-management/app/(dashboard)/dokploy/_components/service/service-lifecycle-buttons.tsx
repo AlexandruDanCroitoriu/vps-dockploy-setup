@@ -8,6 +8,7 @@ import {
   RocketLaunchIcon,
   StopIcon,
   TrashIcon,
+  WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 import { useRouter } from "next/navigation";
 import {
@@ -21,10 +22,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { AppDialog } from "@/components/ui/dialog";
 import type { DokployServiceStatus, DokployServiceType } from "@/lib/dokploy";
-import {
-  notifyProjectsChanged,
-  notifyProjectServiceDeleted,
-} from "@/lib/project-events";
+import { notifyProjectServiceDeleted } from "@/lib/project-events";
 
 import {
   deployServiceAction,
@@ -33,6 +31,7 @@ import {
   stopServiceAction,
 } from "../../_actions/services";
 import type { ActionState } from "../../_actions/shared";
+import { ServiceSettingsDialog } from "./service-settings-dialog";
 
 const initialState: ActionState = { status: "idle", message: "" };
 
@@ -192,6 +191,7 @@ function CompactServiceMenu({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const router = useRouter();
   const isRunning = status === "running";
@@ -205,7 +205,6 @@ function CompactServiceMenu({
         return;
       }
       router.refresh();
-      notifyProjectsChanged();
     });
   }
 
@@ -227,7 +226,6 @@ function CompactServiceMenu({
       notifyProjectServiceDeleted(projectId, serviceId);
       if (deleteRedirectHref) router.push(deleteRedirectHref);
       else router.refresh();
-      notifyProjectsChanged();
     } catch (reason) {
       setError(
         reason instanceof Error
@@ -258,6 +256,20 @@ function CompactServiceMenu({
           anchor="bottom end"
           className="z-50 mt-1 w-48 rounded-md border border-gray-200 bg-white p-1 text-sm shadow-xl outline-none dark:border-white/10 dark:bg-gray-900"
         >
+          <MenuItem>
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(true)}
+              className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-gray-700 data-focus:bg-gray-100 dark:text-gray-300 dark:data-focus:bg-white/5"
+            >
+              <WrenchScrewdriverIcon
+                className="size-4 text-gray-500"
+                aria-hidden="true"
+              />
+              Settings
+            </button>
+          </MenuItem>
+          <div className="my-1 border-t border-gray-200 dark:border-white/10" />
           <MenuItem>
             <button
               type="button"
@@ -361,6 +373,14 @@ function CompactServiceMenu({
           </span>
         )}
       </Menu>
+      <ServiceSettingsDialog
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        projectId={projectId}
+        serviceId={serviceId}
+        serviceName={serviceName}
+        serviceType={serviceType}
+      />
       <AppDialog
         open={deleteOpen}
         onClose={() => !deleting && setDeleteOpen(false)}

@@ -120,6 +120,9 @@ describe("SQLite migrations", () => {
       { version: 6 },
       { version: 7 },
       { version: 8 },
+      { version: 9 },
+      { version: 10 },
+      { version: 11 },
     ]);
   });
 
@@ -145,6 +148,9 @@ describe("SQLite migrations", () => {
       { version: 6 },
       { version: 7 },
       { version: 8 },
+      { version: 9 },
+      { version: 10 },
+      { version: 11 },
     ]);
   });
 
@@ -176,6 +182,9 @@ describe("SQLite migrations", () => {
       { version: 6 },
       { version: 7 },
       { version: 8 },
+      { version: 9 },
+      { version: 10 },
+      { version: 11 },
     ]);
   });
 
@@ -201,6 +210,9 @@ describe("SQLite migrations", () => {
       { version: 6 },
       { version: 7 },
       { version: 8 },
+      { version: 9 },
+      { version: 10 },
+      { version: 11 },
     ]);
   });
 
@@ -226,6 +238,9 @@ describe("SQLite migrations", () => {
       { version: 6 },
       { version: 7 },
       { version: 8 },
+      { version: 9 },
+      { version: 10 },
+      { version: 11 },
     ]);
   });
 
@@ -287,6 +302,46 @@ describe("SQLite migrations", () => {
     expect(() => runMigrations(db)).not.toThrow();
     expect(
       db.prepare("SELECT COUNT(*) count FROM schema_migrations").get(),
-    ).toEqual({ count: 8 });
+    ).toEqual({ count: 11 });
+  });
+
+  it("upgrades version nine by removing obsolete R2 credential storage", () => {
+    const db = versionOneDatabase();
+    runMigrations(db);
+    db.exec(`
+      DELETE FROM schema_migrations WHERE version = 10;
+      CREATE TABLE r2_credentials (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        access_key_id TEXT NOT NULL,
+        secret_access_key TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+
+    runMigrations(db);
+
+    expect(
+      db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?")
+        .get("r2_credentials"),
+    ).toBeUndefined();
+    expect(() => runMigrations(db)).not.toThrow();
+  });
+
+  it("upgrades version ten with PostgreSQL restore markers", () => {
+    const db = versionOneDatabase();
+    runMigrations(db);
+    db.exec(
+      "DROP TABLE postgres_restore_state; DELETE FROM schema_migrations WHERE version = 11;",
+    );
+
+    runMigrations(db);
+
+    expect(
+      db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?")
+        .get("postgres_restore_state"),
+    ).toEqual({ name: "postgres_restore_state" });
+    expect(() => runMigrations(db)).not.toThrow();
   });
 });

@@ -15,6 +15,7 @@ export type CloudflareZone = {
   status: string;
   paused: boolean;
   ipAddress: string;
+  apexARecordId?: string;
   subdomains: CloudflareDnsRecord[];
 };
 
@@ -58,6 +59,7 @@ function normalizeZone(value: unknown): CloudflareZone | null {
     status: typeof zone.status === "string" ? zone.status : "unknown",
     paused: zone.paused === true,
     ipAddress: "",
+    apexARecordId: undefined,
     subdomains: [],
   };
 }
@@ -65,9 +67,14 @@ function normalizeZone(value: unknown): CloudflareZone | null {
 async function getZoneSubdomains(
   zone: CloudflareZone,
   token: string,
-): Promise<{ ipAddress: string; subdomains: CloudflareDnsRecord[] }> {
+): Promise<{
+  ipAddress: string;
+  apexARecordId?: string;
+  subdomains: CloudflareDnsRecord[];
+}> {
   const records = new Map<string, CloudflareDnsRecord>();
   let apexIpAddress = "";
+  let apexARecordId: string | undefined;
   let page = 1;
   let totalPages = 1;
 
@@ -113,6 +120,7 @@ async function getZoneSubdomains(
         typeof value.content === "string"
       ) {
         apexIpAddress = value.content;
+        apexARecordId = typeof value.id === "string" ? value.id : undefined;
       }
       if (
         typeof value.id === "string" &&
@@ -141,6 +149,7 @@ async function getZoneSubdomains(
 
   return {
     ipAddress: apexIpAddress,
+    apexARecordId,
     subdomains: [...records.values()].sort(
       (left, right) =>
         left.name.localeCompare(right.name) ||
@@ -206,14 +215,24 @@ export async function createCloudflareDnsRecord(input: {
   });
 }
 
+export async function updateCloudflareDnsRecord(input: {
+  zoneId: string;
+  recordId: string;
+  name?: string;
+  content?: string;
+}) {
+  await mutateDnsRecord(input.zoneId, input.recordId, "PATCH", {
+    ...(input.name ? { name: input.name } : {}),
+    ...(input.content ? { content: input.content } : {}),
+  });
+}
+
 export async function renameCloudflareDnsRecord(input: {
   zoneId: string;
   recordId: string;
   name: string;
 }) {
-  await mutateDnsRecord(input.zoneId, input.recordId, "PATCH", {
-    name: input.name,
-  });
+  await updateCloudflareDnsRecord(input);
 }
 
 export async function deleteCloudflareDnsRecord(input: {
@@ -221,6 +240,41 @@ export async function deleteCloudflareDnsRecord(input: {
   recordId: string;
 }) {
   await mutateDnsRecord(input.zoneId, input.recordId, "DELETE");
+}
+
+export async function ensureCloudflareARecord(input: {
+  hostname: string;
+  ipAddress: string;
+}) {
+  const hostname = input.hostname.trim().toLowerCase().replace(/\.$/, "");
+  const zones = await getCloudflareZones();
+  const zone = zones
+    .filter(
+      (candidate) =>
+        hostname === candidate.name || hostname.endsWith(`.${candidate.name}`),
+    )
+    .sort((left, right) => right.name.length - left.name.length)[0];
+  if (!zone) {
+    throw new Error(
+      "The selected hostname is not in the configured Cloudflare account.",
+    );
+  }
+  if (hostname === zone.name && zone.ipAddress) return;
+  const existing = zone.subdomains.filter(
+    (record) => record.name.toLowerCase().replace(/\.$/, "") === hostname,
+  );
+  if (existing.some((record) => record.type === "A")) return;
+  if (existing.length > 0) {
+    throw new Error("The selected hostname already has a non-A DNS record.");
+  }
+  await createCloudflareDnsRecord({
+    zoneId: zone.id,
+    name: hostname,
+    type: "A",
+    content: input.ipAddress,
+    proxied: false,
+  });
+  invalidateCloudflareZones();
 }
 
 async function loadCloudflareZones(): Promise<CloudflareZone[]> {

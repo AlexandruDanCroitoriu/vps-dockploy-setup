@@ -11,7 +11,10 @@ describe("repository application discovery", () => {
   it("returns the bundled repository application manifest without GitHub access", async () => {
     await expect(getRepositoryApplications()).resolves.toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ name: "01-infra-management" }),
+        expect.objectContaining({
+          name: "01-infra-management",
+          repeatable: true,
+        }),
         expect.objectContaining({
           name: "vendure-backend",
           kind: "vendure-backend",
@@ -37,7 +40,7 @@ describe("repository application discovery", () => {
     expect(result.applications).toHaveLength(4);
   });
 
-  it("detects a repository application anywhere on the instance", async () => {
+  it("allows repeatable Infra Management deployments", async () => {
     const [application] = await getRepositoryApplications();
 
     expect(
@@ -45,12 +48,12 @@ describe("repository application discovery", () => {
         { name: "unrelated", sourcePath: null },
         { name: "01-infra-management", sourcePath: null },
       ]),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       isRepositoryApplicationDeployed(application, [
         { name: "renamed", sourcePath: "/01-Apps/01-infra-management/" },
       ]),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("matches submitted repository coordinates with normalized paths", async () => {

@@ -14,12 +14,16 @@ import {
   inputClassName,
 } from "@/components/ui/form-field";
 import {
-  notifyProjectsChanged,
   notifyProjectServiceCreation,
   submitProjectServiceCreation,
 } from "@/lib/project-events";
 
 import type { ActionState } from "../../_actions/shared";
+import { generateComposeDomainAction } from "../../_actions/composes";
+import {
+  CloudflareHostnameFields,
+  type CloudflareDomainOption,
+} from "../domains/cloudflare-hostname-fields";
 
 const initialState: ActionState = { status: "idle", message: "" };
 
@@ -41,15 +45,19 @@ export function AddComposeDialog({
   environmentId,
   definitions,
   rootDomain,
+  cloudflareDomains = [],
   defaultLoginCredentials,
   unavailableDefinitionIds,
+  r2Buckets,
 }: {
   projectId: string;
   environmentId?: string;
   definitions: ComposeServiceOption[];
   rootDomain: string;
+  cloudflareDomains?: CloudflareDomainOption[];
   defaultLoginCredentials: { username: string; password: string };
   unavailableDefinitionIds: string[];
+  r2Buckets?: string[];
 }) {
   const [isListOpen, setIsListOpen] = useState(false);
   const listRef = useClickOutside<HTMLDivElement>(isListOpen, setIsListOpen);
@@ -58,6 +66,8 @@ export function AddComposeDialog({
   const [isOpen, setIsOpen] = useState(false);
   const [deployAfterCreate, setDeployAfterCreate] = useState(true);
   const [state, setState] = useState(initialState);
+  const [domainHost, setDomainHost] = useState("");
+  const [s3Host, setS3Host] = useState("");
   const latestRequestIdRef = useRef("");
   const router = useRouter();
 
@@ -97,7 +107,6 @@ export function AddComposeDialog({
           serviceId: result.createdService.id,
         });
         router.refresh();
-        notifyProjectsChanged();
       } else {
         notifyProjectServiceCreation({ phase: "failed", projectId, requestId });
       }
@@ -113,7 +122,6 @@ export function AddComposeDialog({
       });
     }
     router.refresh();
-    notifyProjectsChanged();
   }
 
   const unavailableReason = environmentId
@@ -164,6 +172,12 @@ export function AddComposeDialog({
                           setSelectedDefinition(definition);
                           setIsOpen(true);
                           setDeployAfterCreate(true);
+                          setDomainHost(
+                            definition.defaultDomainSubdomain && rootDomain
+                              ? `${definition.defaultDomainSubdomain}.${rootDomain}`
+                              : "",
+                          );
+                          setS3Host(rootDomain ? `s3.${rootDomain}` : "");
                           setIsListOpen(false);
                         }}
                         className="flex w-full items-start gap-2.5 px-3 py-2 text-left hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-45 dark:hover:bg-indigo-500/10"
@@ -263,6 +277,56 @@ export function AddComposeDialog({
               </div>
             )}
             {selectedDefinition.supportsGarageCapacity && (
+              <div className="grid gap-3 sm:grid-cols-3">
+                <FormField
+                  label="R2 backup bucket"
+                  htmlFor="compose-garage-r2-bucket"
+                >
+                  <select
+                    id="compose-garage-r2-bucket"
+                    name="r2BackupBucket"
+                    required
+                    className={inputClassName}
+                    defaultValue=""
+                  >
+                    <option value="" disabled>
+                      Select a bucket
+                    </option>
+                    {(r2Buckets ?? []).map((bucket) => (
+                      <option key={bucket} value={bucket}>
+                        {bucket}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+                <FormField
+                  label="Backup folder"
+                  htmlFor="compose-garage-backup-prefix"
+                >
+                  <input
+                    id="compose-garage-backup-prefix"
+                    name="r2BackupPrefix"
+                    required
+                    defaultValue="garage"
+                    className={inputClassName}
+                  />
+                </FormField>
+                <FormField
+                  label="Daily backup time"
+                  htmlFor="compose-garage-backup-time"
+                >
+                  <input
+                    id="compose-garage-backup-time"
+                    name="r2BackupTime"
+                    type="time"
+                    required
+                    defaultValue="03:00"
+                    className={inputClassName}
+                  />
+                </FormField>
+              </div>
+            )}
+            {selectedDefinition.supportsGarageCapacity && (
               <FormField
                 label="Garage storage capacity (GB)"
                 htmlFor="compose-garage-capacity-gb"
@@ -281,27 +345,17 @@ export function AddComposeDialog({
               </FormField>
             )}
             {selectedDefinition.supportsDomain && (
-              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-                <FormField
-                  label="Domain hostname"
-                  htmlFor="compose-domain-host"
-                  optional={!selectedDefinition.domainRequired}
-                >
-                  <input
-                    id="compose-domain-host"
-                    name="host"
-                    type="text"
-                    required={selectedDefinition.domainRequired}
-                    autoComplete="off"
-                    placeholder="dbgate.example.com"
-                    defaultValue={
-                      selectedDefinition.defaultDomainSubdomain && rootDomain
-                        ? `${selectedDefinition.defaultDomainSubdomain}.${rootDomain}`
-                        : ""
-                    }
-                    className={inputClassName}
-                  />
-                </FormField>
+              <div className="grid gap-3">
+                <CloudflareHostnameFields
+                  name="host"
+                  value={domainHost}
+                  onChange={setDomainHost}
+                  domains={cloudflareDomains}
+                  required={selectedDefinition.domainRequired}
+                  onGenerate={() =>
+                    generateComposeDomainAction(selectedDefinition.id)
+                  }
+                />
                 {!selectedDefinition.httpsByDefault && (
                   <label className="flex h-10 items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                     <input type="checkbox" name="https" defaultChecked />
@@ -310,32 +364,32 @@ export function AddComposeDialog({
                 )}
                 {selectedDefinition.automaticDomain && (
                   <p className="text-xs text-gray-500 sm:col-span-2 dark:text-gray-400">
-                    Leave the hostname empty to generate a Dokploy domain. HTTPS
-                    and Let&apos;s Encrypt are enabled automatically.
+                    Select no domain to generate a Dokploy domain. HTTPS and
+                    Let&apos;s Encrypt are enabled automatically.
                   </p>
                 )}
               </div>
             )}
             {selectedDefinition.supportsGarageCapacity && (
-              <FormField
-                label="S3 API domain hostname"
-                htmlFor="compose-garage-s3-host"
-              >
-                <input
-                  id="compose-garage-s3-host"
+              <div>
+                <p className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">
+                  S3 API domain hostname
+                </p>
+                <CloudflareHostnameFields
                   name="s3Host"
-                  type="text"
+                  value={s3Host}
+                  onChange={setS3Host}
+                  domains={cloudflareDomains}
                   required
-                  autoComplete="off"
-                  placeholder="s3.example.com"
-                  defaultValue={rootDomain ? `s3.${rootDomain}` : ""}
-                  className={inputClassName}
+                  onGenerate={() =>
+                    generateComposeDomainAction(selectedDefinition.id, "s3")
+                  }
                 />
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   HTTPS endpoint for Garage&apos;s S3-compatible API on port
                   3900.
                 </p>
-              </FormField>
+              </div>
             )}
             <DeployAfterCreateOption
               checked={deployAfterCreate}

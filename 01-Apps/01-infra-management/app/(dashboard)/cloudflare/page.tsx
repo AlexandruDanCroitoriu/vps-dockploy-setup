@@ -77,15 +77,19 @@ export default async function CloudflarePage() {
             </p>
           ) : (
             <CloudflareZoneList
-              zones={zones.map(({ id, name, status, paused, subdomains }) => ({
-                id,
-                name,
-                status,
-                paused,
-                subdomains: subdomains.filter(
-                  (record) => !isResendCloudflareRecord(record, resendDomains),
-                ),
-              }))}
+              zones={zones.map(
+                ({ id, name, status, paused, apexARecordId, subdomains }) => ({
+                  id,
+                  name,
+                  status,
+                  paused,
+                  apexARecordId,
+                  subdomains: subdomains.filter(
+                    (record) =>
+                      !isResendCloudflareRecord(record, resendDomains),
+                  ),
+                }),
+              )}
             />
           )}
         </section>

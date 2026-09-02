@@ -21,10 +21,8 @@ import {
   updateDokployServiceEnv,
   type DokployApplicationBuildType,
 } from "@/lib/dokploy";
-import {
-  resolveInfraManagementHostname,
-  serializeInfraManagementEnvironment,
-} from "@/lib/dokploy/infra-management-environment";
+import { serializeInfraManagementEnvironment } from "@/lib/dokploy/infra-management-environment";
+import { ensureCloudflareARecord } from "@/lib/cloudflare/zones";
 import {
   getRepositoryApplications,
   getRepositoryApplicationDeployments,
@@ -187,6 +185,7 @@ async function getInfraManagementEnvironment(input: {
     authSecret,
     nextAuthUrl: `https://${hostname}`,
     cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN ?? "",
+    cloudflareAccountId: process.env.CLOUDFLARE_ACCOUNT_ID ?? "",
     resendApiKey: process.env.RESEND_API_KEY ?? "",
   });
 }
@@ -240,7 +239,7 @@ export async function createApplicationAction(
   const dockerContextPath = field(formData, "dockerContextPath");
   const publishDirectory = field(formData, "publishDirectory");
   let host = field(formData, "host").toLowerCase();
-  const subdomain = field(formData, "subdomain");
+  const hostProvider = field(formData, "hostProvider") || "cloudflare";
   let port = Number(formData.get("port"));
   const watchPaths = field(formData, "watchPaths")
     .split(/[\r\n,]+/)
@@ -312,10 +311,16 @@ export async function createApplicationAction(
           "Configure a valid instance root domain before deploying Infra Management.",
       };
     }
-    host = resolveInfraManagementHostname(subdomain, instance.rootDomain);
+    host ||= instance.rootDomain;
   }
   if (host && (!isValidHostname(host) || !isValidPort(port))) {
     return { status: "error", message: "Enter a valid hostname and port." };
+  }
+  if (
+    !["cloudflare", "traefik"].includes(hostProvider) ||
+    (hostProvider === "traefik" && !host.endsWith(".traefik.me"))
+  ) {
+    return { status: "error", message: "Invalid domain provider." };
   }
   if (vendurePreset && !host) {
     return {
@@ -374,6 +379,17 @@ export async function createApplicationAction(
             "This repository application is already deployed on the active Dockploy instance.",
         };
       }
+    }
+
+    if (host && hostProvider !== "traefik") {
+      const instance = await getActiveDokployConfiguration();
+      if (!instance?.vpsIp) {
+        throw new Error("The active Dockploy instance has no VPS IP address.");
+      }
+      await ensureCloudflareARecord({
+        hostname: host,
+        ipAddress: instance.vpsIp,
+      });
     }
 
     let environmentVariables = await getInfraManagementEnvironment({
@@ -565,7 +581,7 @@ export async function createApplicationAction(
                 ? [
                     {
                       type: "volume",
-                      volumeName: "infra-management-data",
+                      volumeName: `${name}-data`,
                       mountPath: "/app/data",
                     },
                     {

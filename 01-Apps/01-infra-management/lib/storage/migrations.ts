@@ -94,6 +94,28 @@ const migrations = [
     )
     WHERE status = 'failed';
   `,
+  `
+    CREATE TABLE r2_credentials (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      access_key_id TEXT NOT NULL,
+      secret_access_key TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `,
+  `
+    DROP TABLE r2_credentials;
+  `,
+  `
+    CREATE TABLE postgres_restore_state (
+      instance_id TEXT NOT NULL,
+      postgres_id TEXT NOT NULL,
+      current_backup_key TEXT NOT NULL DEFAULT '',
+      return_backup_key TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (instance_id, postgres_id),
+      FOREIGN KEY (instance_id) REFERENCES dokploy_instances(id) ON DELETE CASCADE
+    );
+  `,
 ] as const;
 
 export function runMigrations(database: Database.Database) {

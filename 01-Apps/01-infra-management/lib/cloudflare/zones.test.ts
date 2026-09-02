@@ -6,9 +6,11 @@ import {
   CloudflareConfigurationError,
   createCloudflareDnsRecord,
   deleteCloudflareDnsRecord,
+  ensureCloudflareARecord,
   getCloudflareZones,
   invalidateCloudflareZones,
   renameCloudflareDnsRecord,
+  updateCloudflareDnsRecord,
 } from "./zones";
 
 const originalToken = process.env.CLOUDFLARE_API_TOKEN;
@@ -148,6 +150,7 @@ describe("Cloudflare zones", () => {
         status: "pending",
         paused: true,
         ipAddress: "192.0.2.10",
+        apexARecordId: "apex",
         subdomains: [
           {
             id: "admin",
@@ -185,6 +188,7 @@ describe("Cloudflare zones", () => {
         status: "active",
         paused: false,
         ipAddress: "198.51.100.7",
+        apexARecordId: "zeta-apex",
         subdomains: [
           {
             id: "app",
@@ -255,6 +259,11 @@ describe("Cloudflare zones", () => {
       recordId: "record-id",
       name: "web.example.com",
     });
+    await updateCloudflareDnsRecord({
+      zoneId: "zone-id",
+      recordId: "record-id",
+      content: "192.0.2.25",
+    });
     await deleteCloudflareDnsRecord({
       zoneId: "zone-id",
       recordId: "record-id",
@@ -285,7 +294,70 @@ describe("Cloudflare zones", () => {
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
       "https://api.cloudflare.com/client/v4/zones/zone-id/dns_records/record-id",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ content: "192.0.2.25" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "https://api.cloudflare.com/client/v4/zones/zone-id/dns_records/record-id",
       expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
+  it("creates a missing hostname A record with the instance IP", async () => {
+    process.env.CLOUDFLARE_API_TOKEN = "secret-token";
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            success: true,
+            result: [
+              {
+                id: "zone-id",
+                name: "example.com",
+                status: "active",
+                paused: false,
+              },
+            ],
+            result_info: { page: 1, total_pages: 1 },
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            success: true,
+            result: [],
+            result_info: { page: 1, total_pages: 1 },
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ success: true, result: {} })),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await ensureCloudflareARecord({
+      hostname: "app.example.com",
+      ipAddress: "203.0.113.10",
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "https://api.cloudflare.com/client/v4/zones/zone-id/dns_records",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          name: "app.example.com",
+          type: "A",
+          content: "203.0.113.10",
+          ttl: 1,
+          proxied: false,
+        }),
+      }),
     );
   });
 });

@@ -53,6 +53,7 @@ describe("Garage Compose definition", () => {
     expect(environment).not.toContain("webui-password");
     expect(environment).toContain('GARAGE_CAPACITY_BYTES="25000000000"');
     expect(environment).toContain('GARAGE_VENDURE_BUCKET="vendure-assets"');
+    expect(environment).not.toContain("GARAGE_POSTGRES_BACKUP_BUCKET");
     expect(environment).toContain('GARAGE_VENDURE_ACCESS_KEY_ID="GKTEST"');
     expect(environment).toContain(
       'GARAGE_VENDURE_SECRET_ACCESS_KEY="s3-secret"',
@@ -69,6 +70,9 @@ describe("Garage Compose definition", () => {
     expect(garageService.composeFile).toContain("/v2/ImportKey");
     expect(garageService.composeFile).toContain("/v2/CreateBucket");
     expect(garageService.composeFile).toContain("/v2/AllowBucketKey");
+    expect(garageService.composeFile).not.toContain(
+      "GARAGE_POSTGRES_BACKUP_BUCKET",
+    );
   });
 
   it("publishes only the Garage connection settings to the project", () => {

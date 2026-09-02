@@ -17,6 +17,7 @@ export function ServicePageTabs({
   loadErrors,
   serviceId,
   serviceType,
+  syncWithUrl = true,
 }: {
   overview: React.ReactNode;
   actions?: React.ReactNode;
@@ -25,16 +26,23 @@ export function ServicePageTabs({
   loadErrors?: { deployments?: string; domains?: string };
   serviceId: string;
   serviceType: DokployServiceType;
+  syncWithUrl?: boolean;
 }) {
   const searchParams = useSearchParams();
   const requestedTab = searchParams.get("tab");
-  const activeTab: Tab =
+  const requestedActiveTab: Tab =
     requestedTab === "deployments" || requestedTab === "domains"
       ? requestedTab
       : "overview";
+  const [dialogTab, setDialogTab] = useState<Tab>("overview");
+  const activeTab = syncWithUrl ? requestedActiveTab : dialogTab;
   const [selected, setSelected] = useState<DokployDeployment | null>(null);
 
   function selectTab(tab: Tab) {
+    if (!syncWithUrl) {
+      setDialogTab(tab);
+      return;
+    }
     const params = new URLSearchParams(searchParams.toString());
     if (tab === "overview") params.delete("tab");
     else params.set("tab", tab);

@@ -3,100 +3,27 @@
 import { Dialog, DialogBackdrop, DialogPanel } from "@headlessui/react";
 import { Bars3Icon, XMarkIcon } from "@heroicons/react/24/outline";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
-import type {
-  SidebarProject,
-  SidebarProjectsPayload,
-} from "@/lib/dokploy/sidebar-project-types";
-import {
-  PROJECT_DELETED_EVENT,
-  PROJECTS_CHANGED_EVENT,
-} from "@/lib/project-events";
+import { useState } from "react";
 import type { DokployInstanceSummary } from "@/lib/storage/dokploy-instances";
 import { Sidebar } from "./sidebar";
 
 export function DashboardShell({
   children,
-  initialProjects,
-  initialProjectsError,
   instances,
   activeInstanceId,
   dokployAvailable,
-  dokployRootUrl,
   projectBuildsEnabled,
   userName,
 }: {
   children: React.ReactNode;
-  initialProjects: SidebarProject[];
-  initialProjectsError: string;
   instances: DokployInstanceSummary[];
   activeInstanceId: string | null;
   dokployAvailable: boolean;
-  dokployRootUrl: string;
   projectBuildsEnabled: boolean;
   userName: string;
 }) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [projects, setProjects] = useState(initialProjects);
-  const [projectsError, setProjectsError] = useState(initialProjectsError);
-
-  useEffect(() => {
-    if (!dokployAvailable) return;
-
-    let controller: AbortController | null = null;
-    let pollTimer: ReturnType<typeof setTimeout> | null = null;
-    let warmStarted = false;
-    async function reloadProjects(forceRefresh = false) {
-      controller?.abort();
-      controller = new AbortController();
-      try {
-        const response = await fetch(
-          `/api/dokploy/projects${forceRefresh ? "?refresh=1" : ""}`,
-          {
-            signal: controller.signal,
-          },
-        );
-        if (!response.ok) throw new Error();
-        const payload: unknown = await response.json();
-        if (!isSidebarProjectsPayload(payload)) throw new Error();
-        setProjects(payload.projects);
-        setProjectsError(payload.error);
-        if (!forceRefresh && !warmStarted) {
-          warmStarted = true;
-          void fetch("/api/dokploy/warm", { method: "POST" });
-        }
-        if (payload.refreshing) {
-          pollTimer = setTimeout(() => void reloadProjects(), 500);
-        }
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError")
-          return;
-        setProjectsError("Unable to load projects.");
-      }
-    }
-    function handleProjectsChanged() {
-      void reloadProjects(true);
-    }
-    function handleProjectDeleted(event: Event) {
-      const projectId = (event as CustomEvent<{ projectId?: unknown }>).detail
-        ?.projectId;
-      if (typeof projectId !== "string") return;
-      setProjects((current) =>
-        current.filter((project) => project.projectId !== projectId),
-      );
-      void reloadProjects(true);
-    }
-    void reloadProjects();
-    window.addEventListener(PROJECTS_CHANGED_EVENT, handleProjectsChanged);
-    window.addEventListener(PROJECT_DELETED_EVENT, handleProjectDeleted);
-    return () => {
-      controller?.abort();
-      if (pollTimer) clearTimeout(pollTimer);
-      window.removeEventListener(PROJECTS_CHANGED_EVENT, handleProjectsChanged);
-      window.removeEventListener(PROJECT_DELETED_EVENT, handleProjectDeleted);
-    };
-  }, [activeInstanceId, dokployAvailable]);
 
   return (
     <div className="min-h-screen bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-300">
@@ -117,12 +44,9 @@ export function DashboardShell({
               <XMarkIcon className="size-6" aria-hidden="true" />
             </button>
             <Sidebar
-              projects={projects}
-              projectsError={projectsError}
               instances={instances}
               activeInstanceId={activeInstanceId}
               dokployAvailable={dokployAvailable}
-              dokployRootUrl={dokployRootUrl}
               projectBuildsEnabled={projectBuildsEnabled}
               userName={userName}
               onNavigate={() => setSidebarOpen(false)}
@@ -132,12 +56,9 @@ export function DashboardShell({
       </Dialog>
       <div className="hidden lg:fixed lg:inset-y-0 lg:z-50 lg:flex lg:w-56 lg:flex-col">
         <Sidebar
-          projects={projects}
-          projectsError={projectsError}
           instances={instances}
           activeInstanceId={activeInstanceId}
           dokployAvailable={dokployAvailable}
-          dokployRootUrl={dokployRootUrl}
           projectBuildsEnabled={projectBuildsEnabled}
           userName={userName}
         />
@@ -162,38 +83,5 @@ export function DashboardShell({
         </main>
       </div>
     </div>
-  );
-}
-
-function isSidebarProjectsPayload(
-  value: unknown,
-): value is SidebarProjectsPayload {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "projects" in value &&
-    Array.isArray(value.projects) &&
-    value.projects.every(
-      (project) =>
-        typeof project === "object" &&
-        project !== null &&
-        "projectId" in project &&
-        typeof project.projectId === "string" &&
-        "name" in project &&
-        typeof project.name === "string" &&
-        "services" in project &&
-        Array.isArray(project.services) &&
-        project.services.every(
-          (service: unknown) =>
-            typeof service === "object" &&
-            service !== null &&
-            "environmentId" in service &&
-            typeof service.environmentId === "string",
-        ),
-    ) &&
-    "refreshing" in value &&
-    typeof value.refreshing === "boolean" &&
-    "error" in value &&
-    typeof value.error === "string"
   );
 }

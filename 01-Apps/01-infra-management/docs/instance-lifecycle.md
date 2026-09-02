@@ -14,7 +14,7 @@ draft form
   -> administrator created
   -> HTTPS domain configured
   -> API key generated and verified (Dokploy navigation becomes available)
-  -> Main project created (sidebar project becomes available)
+  -> Main project created (Dokploy overview becomes available)
   -> Zot deployed and running
   -> complete
 ```

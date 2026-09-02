@@ -2,16 +2,15 @@
 
 import {
   CloudIcon,
+  CircleStackIcon,
   FolderIcon,
   HomeIcon,
   ServerIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { SidebarProject } from "@/lib/dokploy/sidebar-project-types";
 import type { DokployInstanceSummary } from "@/lib/storage/dokploy-instances";
 import { DokployInstanceSelector } from "./dokploy-instance-selector";
-import { SidebarProjectTree } from "./sidebar-project-tree";
 import { ThemeToggle } from "./theme-toggle";
 import { UserMenu } from "./user-menu";
 
@@ -19,30 +18,25 @@ const classes = (...values: Array<string | false | undefined>) =>
   values.filter(Boolean).join(" ");
 
 export function Sidebar({
-  projects,
-  projectsError,
   instances,
   activeInstanceId,
   dokployAvailable,
-  dokployRootUrl,
   projectBuildsEnabled,
   userName,
   onNavigate,
 }: {
-  projects: SidebarProject[];
-  projectsError: string;
   instances: DokployInstanceSummary[];
   activeInstanceId: string | null;
   dokployAvailable: boolean;
-  dokployRootUrl: string;
   projectBuildsEnabled: boolean;
   userName: string;
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
   const navigation = [
-    { name: "Home", href: "/home", icon: HomeIcon },
+    { name: "Home", href: "/", icon: HomeIcon },
     { name: "Cloudflare", href: "/cloudflare", icon: CloudIcon },
+    { name: "R2 Storage", href: "/r2", icon: CircleStackIcon },
     ...(projectBuildsEnabled
       ? [{ name: "Projects", href: "/projects", icon: FolderIcon } as const]
       : []),
@@ -57,7 +51,8 @@ export function Sidebar({
         <ul className="space-y-0.5">
           {navigation.map((item) => {
             const current =
-              pathname === item.href || pathname.startsWith(`${item.href}/`);
+              pathname === item.href ||
+              (item.href !== "/" && pathname.startsWith(`${item.href}/`));
             return (
               <li key={item.href}>
                 <Link
@@ -123,13 +118,6 @@ export function Sidebar({
                 <FolderIcon className="size-5 shrink-0" />
                 Dokploy
               </Link>
-              <SidebarProjectTree
-                projects={projects}
-                error={projectsError}
-                pathname={pathname}
-                dokployRootUrl={dokployRootUrl}
-                onNavigate={onNavigate}
-              />
             </li>
           </ul>
         )}

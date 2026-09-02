@@ -29,12 +29,22 @@ Copy `.env.example` to `.env.local` for local development and configure:
   service, initial Dockploy administrator, and root SSH password for new instances
 - `AUTH_SECRET`: stable random secret used to encrypt session JWTs
 - `NEXTAUTH_URL`: public application URL
-- `CLOUDFLARE_API_TOKEN`: server-only Cloudflare API token with `Zone:Read` and
-  `DNS:Write` permissions, used to manage accessible domains and subdomains on
-  the Cloudflare page
+- `CLOUDFLARE_API_TOKEN`: server-only Cloudflare API token with `Zone:Read`,
+  `DNS:Write`, and account-level `Workers R2 Storage:Edit` permissions
+- `CLOUDFLARE_ACCOUNT_ID`: account containing the R2 buckets shown and managed
+  on the R2 Storage page
 - `RESEND_API_KEY`: server-only full-access Resend key used to provision each
   active instance domain. The key is never copied to Dokploy projects; Infra
   Management creates a restricted sending key for each Vendure project instead.
+
+The Garage and Vendure template forms select an R2 bucket, backup folder, and
+daily backup time. Dokploy backs up PostgreSQL directly to the selected R2
+bucket under the `postgres` folder one hour before the selected time, then backs
+up Garage's metadata and data volumes to R2 at the selected time. The 30 latest backups are
+retained. Cron schedules use the Dokploy server timezone. Infra Management
+derives the R2 S3 credentials from the configured Cloudflare API token and
+synchronizes every bucket to every configured Dokploy instance. The token must
+include R2 object read/write access as well as bucket-management access.
 
 Dockploy root domains, API/CLI keys, and default service login credentials are
 configured from the authenticated Dashboard. The selected instance's values
@@ -53,10 +63,12 @@ once. The imported instance must then be selected from the sidebar.
 The application dropdown uses the repository application manifest in
 `lib/github/repository-applications.ts`. This avoids runtime GitHub API access
 and does not require a `GITHUB_TOKEN`. Add new `01-Apps` folders to that manifest
-when they should appear in the dropdown. Each manifest application can be
-deployed only once per Dockploy instance, regardless of which project contains
-it. Applications backed by a Zot image remain unavailable until their required
-`latest` image can be verified in the active instance's registry.
+when they should appear in the dropdown. Manifest applications are deployed
+only once per Dockploy instance unless their manifest entry is repeatable.
+Infra Management and Vendure storefronts are repeatable; give each deployment
+a unique application name and hostname. Applications backed by a Zot image
+remain unavailable until their required `latest` image can be verified in the
+active instance's registry.
 
 The Vendure repository entry is a dependent application group. Deploy its
 backend first from `online-store-vendure-server:latest` in the active
@@ -177,12 +189,14 @@ Infra Management using the repository application picker.
    `AUTH_SECRET`, and `NEXTAUTH_URL`. For a manually
    created deployment, configure every required environment variable yourself.
    The generated environment also forwards the current dashboard's server-only
-   `CLOUDFLARE_API_TOKEN` and server-only `RESEND_API_KEY` so Cloudflare and
-   Resend domain management are available in the deployed copy.
+   `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and `RESEND_API_KEY` so
+   provider integrations are available in the deployed copy.
 4. Expose port `3000`, attach the public domain, and enable HTTPS.
 5. Mount persistent application storage at `/app/data`. The application writes
    `/app/data/infra-management.sqlite` automatically. Without that mount,
    configured instances are lost when the container is replaced.
+   Deployments created from the repository application picker receive a
+   separate Docker volume derived from their application name.
 6. Keep one replica. Login throttling is process-local and SQLite is not shared
    between replicas.
 

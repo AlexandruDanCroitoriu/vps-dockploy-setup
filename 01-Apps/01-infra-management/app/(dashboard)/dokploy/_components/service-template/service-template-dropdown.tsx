@@ -7,10 +7,12 @@ import { Button } from "@/components/ui/button";
 import { AppDialog } from "@/components/ui/dialog";
 import { FormField, inputClassName } from "@/components/ui/form-field";
 import { useClickOutside } from "@/components/ui/use-click-outside";
+import { notifyProjectServiceCreation } from "@/lib/project-events";
 import {
-  notifyProjectsChanged,
-  notifyProjectServiceCreation,
-} from "@/lib/project-events";
+  CloudflareHostnameFields,
+  type CloudflareDomainOption,
+} from "../domains/cloudflare-hostname-fields";
+import { generateComposeDomainAction } from "../../_actions/composes";
 
 const infrastructureTemplateServices = [
   {
@@ -90,18 +92,25 @@ export function ServiceTemplateDropdown({
   projectId,
   environmentExists,
   rootDomain,
+  cloudflareDomains = [],
   services,
+  r2Buckets = [],
 }: {
   projectId: string;
   environmentExists: boolean;
   rootDomain: string;
+  cloudflareDomains?: CloudflareDomainOption[];
   services: Array<{ type: string; name: string }>;
+  r2Buckets?: string[];
 }) {
   const [open, setOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateId | null>(
     null,
   );
   const [error, setError] = useState("");
+  const [garageS3Host, setGarageS3Host] = useState(
+    rootDomain ? `s3.${rootDomain}` : "",
+  );
   const ref = useClickOutside<HTMLDivElement>(open, setOpen);
   const templateUnavailable = services.some(
     (service) =>
@@ -128,6 +137,12 @@ export function ServiceTemplateDropdown({
     const formData = new FormData(event.currentTarget);
     const garageCapacityGb = Number(formData.get("garageCapacityGb"));
     const garageS3Host = String(formData.get("garageS3Host") ?? "");
+    const garageS3HostProvider = String(
+      formData.get("garageS3HostProvider") ?? "cloudflare",
+    );
+    const r2BackupBucket = String(formData.get("r2BackupBucket") ?? "");
+    const r2BackupPrefix = String(formData.get("r2BackupPrefix") ?? "");
+    const r2BackupTime = String(formData.get("r2BackupTime") ?? "");
     const templateId = selectedTemplate;
     if (!templateId) return;
     const templateServices: readonly TemplateService[] =
@@ -163,6 +178,10 @@ export function ServiceTemplateDropdown({
             templateId,
             garageCapacityGb,
             garageS3Host,
+            garageS3HostProvider,
+            r2BackupBucket,
+            r2BackupPrefix,
+            r2BackupTime,
           }),
         },
       );
@@ -213,7 +232,6 @@ export function ServiceTemplateDropdown({
             "Template deployment failed.",
         );
       }
-      notifyProjectsChanged();
     } catch {
       for (const requestId of requests.values()) {
         notifyProjectServiceCreation({ phase: "failed", projectId, requestId });
@@ -352,25 +370,73 @@ export function ServiceTemplateDropdown({
                 className={inputClassName}
               />
             </FormField>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <FormField
+                label="R2 backup bucket"
+                htmlFor="template-r2-backup-bucket"
+              >
+                <select
+                  id="template-r2-backup-bucket"
+                  name="r2BackupBucket"
+                  required
+                  defaultValue=""
+                  className={inputClassName}
+                >
+                  <option value="" disabled>
+                    Select a bucket
+                  </option>
+                  {r2Buckets.map((bucket) => (
+                    <option key={bucket} value={bucket}>
+                      {bucket}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              <FormField
+                label="Backup folder"
+                htmlFor="template-r2-backup-prefix"
+              >
+                <input
+                  id="template-r2-backup-prefix"
+                  name="r2BackupPrefix"
+                  required
+                  defaultValue="garage"
+                  className={inputClassName}
+                />
+              </FormField>
+              <FormField
+                label="Daily backup time"
+                htmlFor="template-r2-backup-time"
+              >
+                <input
+                  id="template-r2-backup-time"
+                  name="r2BackupTime"
+                  type="time"
+                  required
+                  defaultValue="03:00"
+                  className={inputClassName}
+                />
+              </FormField>
+            </div>
             <p className="text-xs text-gray-500 dark:text-gray-400">
               Garage will automatically initialize its single-node layout in the
               local zone with this capacity.
             </p>
-            <FormField
-              label="Garage S3 API domain hostname"
-              htmlFor="garage-s3-host"
-            >
-              <input
-                id="garage-s3-host"
+            <div>
+              <p className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">
+                Garage S3 API domain hostname
+              </p>
+              <CloudflareHostnameFields
                 name="garageS3Host"
-                type="text"
+                value={garageS3Host}
+                onChange={setGarageS3Host}
+                domains={cloudflareDomains}
                 required
-                autoComplete="off"
-                defaultValue={rootDomain ? `s3.${rootDomain}` : ""}
-                placeholder="s3.example.com"
-                className={inputClassName}
+                onGenerate={() =>
+                  generateComposeDomainAction("garage-with-webui", "s3")
+                }
               />
-            </FormField>
+            </div>
           </form>
         </AppDialog>
       )}

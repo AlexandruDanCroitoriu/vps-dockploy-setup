@@ -9,6 +9,7 @@ import {
 import { updateDokployInstance } from "@/lib/storage/dokploy-instances";
 import { refreshSidebarProjectSnapshot } from "@/lib/dokploy/sidebar-project-snapshot";
 import { runDokployBootstrapStep } from "@/lib/vps/bootstrap-dokploy";
+import { syncAllR2BucketsToDokployInstance } from "@/lib/dokploy/r2-destinations";
 import {
   DOKPLOY_BOOTSTRAP_STEPS,
   type DokployBootstrapStep,
@@ -204,6 +205,18 @@ async function executeSavedStep(jobId: string, requestedStep: string) {
         defaultServiceUsername: updatedJob.defaultServiceUsername,
         defaultServicePassword: updatedJob.defaultServicePassword,
       });
+      if (step === "zot") {
+        await syncAllR2BucketsToDokployInstance(updatedJob.instanceId).catch(
+          (error) => {
+            updateDokployProvisioningJob(job.id, {
+              log: {
+                step,
+                message: `Dokploy setup completed, but R2 buckets could not be synchronized: ${error instanceof Error ? error.message : "Unknown error"}`,
+              },
+            });
+          },
+        );
+      }
       if (step === "main-project" || step === "zot") {
         await refreshBootstrapSidebar(updatedJob.instanceId, step).catch(
           () => {},

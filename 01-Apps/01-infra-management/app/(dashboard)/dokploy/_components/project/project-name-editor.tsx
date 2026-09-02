@@ -2,7 +2,6 @@
 
 import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useRef, useState } from "react";
-import { notifyProjectsChanged } from "@/lib/project-events";
 
 import { updateProjectNameAction } from "../../_actions/projects";
 import type { ActionState } from "../../_actions/shared";
@@ -37,7 +36,6 @@ export function ProjectNameEditor({
     queueMicrotask(() => {
       setEditing(false);
       router.refresh();
-      notifyProjectsChanged();
     });
   }, [router, state]);
 

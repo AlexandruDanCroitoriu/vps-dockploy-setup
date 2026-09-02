@@ -12,15 +12,22 @@ import {
 } from "@/compose-services/registry";
 import {
   createDokployRawCompose,
+  getActiveDokployConfiguration,
   getActiveDokployInstanceSummary,
   getDokployProject,
   getDokployProjects,
+  generateDokployDomain,
   isValidHostname,
   mergeDatabaseCredentialsIntoProjectEnv,
   mergeDokployProjectEnv,
   parseDokployEnvironmentEntries,
   updateDokployProjectEnv,
 } from "@/lib/dokploy";
+import {
+  configureGarageR2VolumeBackups,
+  runGarageBackupsManually,
+} from "@/lib/dokploy/vendure-backups";
+import { ensureCloudflareARecord } from "@/lib/cloudflare/zones";
 
 import {
   deployAfterCreateRequested,
@@ -30,6 +37,34 @@ import {
   startInitialDeployment,
   type ActionState,
 } from "./shared";
+
+export async function generateComposeDomainAction(
+  definitionId: string,
+  suffix?: "s3",
+) {
+  if (!(await requireAuthenticatedSession())) {
+    return { status: "error" as const, message: SESSION_EXPIRED_STATE.message };
+  }
+  const definition = getComposeServiceDefinition(definitionId);
+  if (!definition?.domain) {
+    return { status: "error" as const, message: "Invalid Compose service." };
+  }
+  try {
+    return {
+      status: "success" as const,
+      domain: await generateDokployDomain(
+        `${definition.name}${suffix ? `-${suffix}` : ""}`,
+      ),
+    };
+  } catch (error) {
+    const state = getActionError(
+      error,
+      "Unable to generate a Traefik domain.",
+      "domain generation",
+    );
+    return { status: "error" as const, message: state.message };
+  }
+}
 
 export async function createComposeAction(
   projectId: string,
@@ -42,10 +77,18 @@ export async function createComposeAction(
 
   const definitionId = formData.get("definitionId")?.toString() ?? "";
   const host = formData.get("host")?.toString().trim().toLowerCase() ?? "";
+  const hostProvider = formData.get("hostProvider")?.toString() ?? "cloudflare";
   const s3Host = formData.get("s3Host")?.toString().trim().toLowerCase() ?? "";
+  const s3HostProvider =
+    formData.get("s3HostProvider")?.toString() ?? "cloudflare";
   const loginUsername = formData.get("loginUsername")?.toString().trim() ?? "";
   const loginPassword = formData.get("loginPassword")?.toString() ?? "";
   const deployAfterCreate = deployAfterCreateRequested(formData);
+  const r2BackupBucket =
+    formData.get("r2BackupBucket")?.toString().trim() ?? "";
+  const r2BackupPrefix =
+    formData.get("r2BackupPrefix")?.toString().trim() ?? "";
+  const r2BackupTime = formData.get("r2BackupTime")?.toString().trim() ?? "";
   const definition = getComposeServiceDefinition(definitionId);
   const generateDomain = Boolean(
     definition?.domain?.generateByDefault && !host,
@@ -66,6 +109,14 @@ export async function createComposeAction(
     };
   if (!generateDomain && host && !isValidHostname(host))
     return { status: "error", message: "Enter a valid domain hostname." };
+  if (
+    !["cloudflare", "traefik"].includes(hostProvider) ||
+    (hostProvider === "traefik" && !host.endsWith(".traefik.me")) ||
+    !["cloudflare", "traefik"].includes(s3HostProvider) ||
+    (s3HostProvider === "traefik" && !s3Host.endsWith(".traefik.me"))
+  ) {
+    return { status: "error", message: "Invalid domain provider." };
+  }
   if (definition.id === "garage-with-webui" && !isValidHostname(s3Host)) {
     return {
       status: "error",
@@ -179,6 +230,24 @@ export async function createComposeAction(
   }
 
   try {
+    const cloudflareHosts = [
+      ...(host && hostProvider !== "traefik" ? [host] : []),
+      ...(s3Host && s3HostProvider !== "traefik" ? [s3Host] : []),
+    ];
+    if (cloudflareHosts.length > 0) {
+      const instance = await getActiveDokployConfiguration();
+      if (!instance?.vpsIp) {
+        throw new Error("The active Dockploy instance has no VPS IP address.");
+      }
+      await Promise.all(
+        cloudflareHosts.map((hostname) =>
+          ensureCloudflareARecord({
+            hostname,
+            ipAddress: instance.vpsIp,
+          }),
+        ),
+      );
+    }
     if (
       definition.environmentTarget === "project" ||
       definition.projectEnvironmentVariables
@@ -250,6 +319,25 @@ export async function createComposeAction(
         };
       }
     }
+    if (definition.id === "garage-with-webui" && r2BackupBucket) {
+      try {
+        await configureGarageR2VolumeBackups({
+          composeId,
+          projectId,
+          bucket: r2BackupBucket,
+          prefix: r2BackupPrefix,
+          time: r2BackupTime,
+        });
+      } catch (error) {
+        revalidatePath("/dokploy");
+        revalidatePath(`/dokploy/${projectId}`);
+        return {
+          status: "error",
+          message: `Garage was created, but its R2 backups could not be configured: ${error instanceof Error ? error.message : "Unknown error"}`,
+          createdService: { id: composeId, type: "compose" },
+        };
+      }
+    }
     revalidatePath("/dokploy");
     revalidatePath(`/dokploy/${projectId}`);
     return {
@@ -264,6 +352,66 @@ export async function createComposeAction(
       error,
       "Unable to create the Compose service.",
       "the Compose service",
+    );
+  }
+}
+
+export async function updateGarageBackupAction(
+  projectId: string,
+  composeId: string,
+  previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  void previousState;
+  if (!(await requireAuthenticatedSession())) return SESSION_EXPIRED_STATE;
+  try {
+    await configureGarageR2VolumeBackups({
+      projectId,
+      composeId,
+      bucket: String(formData.get("bucket") ?? "").trim(),
+      prefix: String(formData.get("prefix") ?? "").trim(),
+      time: String(formData.get("time") ?? "").trim(),
+    });
+    revalidatePath(
+      `/dokploy/${encodeURIComponent(projectId)}/services/compose/${encodeURIComponent(composeId)}`,
+    );
+    revalidatePath("/instance");
+    return { status: "success", message: "Garage backup configuration saved." };
+  } catch (error) {
+    return getActionError(
+      error,
+      error instanceof Error
+        ? error.message
+        : "Unable to update the Garage backups.",
+      "the Garage backup configuration",
+    );
+  }
+}
+
+export async function runGarageBackupAction(
+  projectId: string,
+  composeId: string,
+  previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  void previousState;
+  void formData;
+  if (!(await requireAuthenticatedSession())) return SESSION_EXPIRED_STATE;
+  try {
+    await runGarageBackupsManually({ projectId, composeId });
+    revalidatePath("/instance");
+    return {
+      status: "success",
+      message:
+        "Backup started: PostgreSQL first when configured, then both Garage volumes.",
+    };
+  } catch (error) {
+    return getActionError(
+      error,
+      error instanceof Error
+        ? error.message
+        : "Unable to start the Garage backup.",
+      "the Garage backup",
     );
   }
 }

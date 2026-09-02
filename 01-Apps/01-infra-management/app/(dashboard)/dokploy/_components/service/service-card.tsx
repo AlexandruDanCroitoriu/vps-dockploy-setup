@@ -2,7 +2,6 @@ import {
   ArrowTopRightOnSquareIcon,
   CubeIcon,
 } from "@heroicons/react/24/outline";
-import Link from "next/link";
 
 import {
   getServiceTypeLabel,
@@ -15,6 +14,10 @@ import { DatabaseCredentials } from "../database/database-credentials";
 import { EnvironmentVariableEditor } from "../environment/environment-variable-editor";
 import { ServiceLifecycleButtons } from "./service-lifecycle-buttons";
 import { getServiceDomainHref } from "./service-domain-href";
+import { GarageBackupControls } from "../compose/garage-backup-controls";
+import type { GarageBackupConfiguration } from "@/lib/dokploy/vendure-backups";
+import type { PostgresBackupConfiguration } from "@/lib/dokploy/vendure-backups";
+import { PostgresBackupControls } from "../database/postgres-backup-controls";
 
 export { getServiceDomainHref } from "./service-domain-href";
 
@@ -32,7 +35,6 @@ export function getServiceDisplayName(service: DokployService) {
 
 export function ServiceCard({
   service,
-  href,
   dokployHref,
   showCredentialsButton = true,
   showEnvironmentEditor = true,
@@ -40,9 +42,10 @@ export function ServiceCard({
   serviceActionsMenu = false,
   serviceDeleteRedirectHref,
   domains = [],
+  garageBackup,
+  postgresBackup,
 }: {
   service: DokployService;
-  href?: string;
   dokployHref?: string;
   showCredentialsButton?: boolean;
   showEnvironmentEditor?: boolean;
@@ -50,6 +53,14 @@ export function ServiceCard({
   serviceActionsMenu?: boolean;
   serviceDeleteRedirectHref?: string;
   domains?: DokployDomain[];
+  garageBackup?: {
+    buckets: string[];
+    configuration: GarageBackupConfiguration;
+  };
+  postgresBackup?: {
+    buckets: string[];
+    configuration: PostgresBackupConfiguration;
+  };
 }) {
   const status = serviceStatusStyles[service.status];
   const isDatabase = isDatabaseService(service.type);
@@ -78,16 +89,7 @@ export function ServiceCard({
             className={`size-2.5 shrink-0 rounded-full ${status.dot}`}
           />
           <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
-            {href ? (
-              <Link
-                href={href}
-                className="hover:text-indigo-600 dark:hover:text-indigo-300"
-              >
-                {getServiceDisplayName(service)}
-              </Link>
-            ) : (
-              getServiceDisplayName(service)
-            )}
+            {getServiceDisplayName(service)}
           </p>
         </div>
         {domains.length > 0 && (
@@ -111,6 +113,23 @@ export function ServiceCard({
           </div>
         )}
       </div>
+      {garageBackup && projectId && (
+        <GarageBackupControls
+          compact
+          projectId={projectId}
+          composeId={service.id}
+          buckets={garageBackup.buckets}
+          configuration={garageBackup.configuration}
+        />
+      )}
+      {postgresBackup && projectId && (
+        <PostgresBackupControls
+          projectId={projectId}
+          postgresId={service.id}
+          buckets={postgresBackup.buckets}
+          configuration={postgresBackup.configuration}
+        />
+      )}
       {!isDatabase && showEnvironmentEditor && (
         <EnvironmentVariableEditor
           target="service"

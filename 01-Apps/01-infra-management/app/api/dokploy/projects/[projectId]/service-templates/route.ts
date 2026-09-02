@@ -15,6 +15,7 @@ import {
   parseDokployEnvironmentEntries,
   updateDokployProjectEnv,
 } from "@/lib/dokploy";
+import { configureVendureBackups } from "@/lib/dokploy/vendure-backups";
 import { getVendureBackendZotImage } from "@/lib/zot/vendure-backend-image";
 import { getVendureStorefrontZotImage } from "@/lib/zot/vendure-storefront-image";
 
@@ -101,6 +102,10 @@ export async function POST(
     templateId?: string;
     garageCapacityGb?: number;
     garageS3Host?: string;
+    garageS3HostProvider?: string;
+    r2BackupBucket?: string;
+    r2BackupPrefix?: string;
+    r2BackupTime?: string;
   } | null;
   if (
     payload?.templateId !== "postgres-redis-dbgate" &&
@@ -112,6 +117,9 @@ export async function POST(
     );
   }
   const garageCapacityGb = payload.garageCapacityGb ?? 20;
+  const r2BackupBucket = payload.r2BackupBucket?.trim() ?? "";
+  const r2BackupPrefix = payload.r2BackupPrefix?.trim() ?? "";
+  const r2BackupTime = payload.r2BackupTime?.trim() ?? "";
   if (
     !Number.isSafeInteger(garageCapacityGb) ||
     garageCapacityGb < 1 ||
@@ -244,7 +252,16 @@ export async function POST(
     garageForm.set("loginPassword", configuration.defaultServicePassword);
     garageForm.set("host", `garage.${configuration.rootDomain}`);
     garageForm.set("s3Host", garageS3Host);
+    garageForm.set(
+      "s3HostProvider",
+      payload.garageS3HostProvider ?? "cloudflare",
+    );
     garageForm.set("deployAfterCreate", "on");
+    if (r2BackupBucket) {
+      garageForm.set("r2BackupBucket", r2BackupBucket);
+      garageForm.set("r2BackupPrefix", r2BackupPrefix);
+      garageForm.set("r2BackupTime", r2BackupTime);
+    }
     const garageResult = await createComposeAction(
       projectId,
       environment.environmentId,
@@ -265,6 +282,25 @@ export async function POST(
           garageProject.env,
           parseDokployEnvironmentEntries(postgresProjectEnvironment),
         ),
+      );
+      try {
+        await configureVendureBackups({
+          projectId,
+          postgresId: postgresResult.createdService!.id,
+          bucket: r2BackupBucket,
+          prefix: r2BackupPrefix,
+          backupTime: r2BackupTime || "03:00",
+        });
+      } catch (error) {
+        warnings.push(
+          error instanceof Error
+            ? `Services were created, but automatic backups could not be configured: ${error.message}`
+            : "Services were created, but automatic backups could not be configured.",
+        );
+      }
+    } else {
+      warnings.push(
+        "Services were created, but automatic backups could not be configured because the refreshed project was unavailable.",
       );
     }
 
@@ -371,7 +407,16 @@ export async function POST(
     garageForm.set("host", `garage.${configuration.rootDomain}`);
   }
   garageForm.set("s3Host", garageS3Host);
+  garageForm.set(
+    "s3HostProvider",
+    payload.garageS3HostProvider ?? "cloudflare",
+  );
   garageForm.set("deployAfterCreate", "on");
+  if (r2BackupBucket) {
+    garageForm.set("r2BackupBucket", r2BackupBucket);
+    garageForm.set("r2BackupPrefix", r2BackupPrefix);
+    garageForm.set("r2BackupTime", r2BackupTime);
+  }
   const garageResult = await createComposeAction(
     projectId,
     environment.environmentId,

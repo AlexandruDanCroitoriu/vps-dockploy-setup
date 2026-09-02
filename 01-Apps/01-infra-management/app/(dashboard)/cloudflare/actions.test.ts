@@ -9,7 +9,7 @@ vi.mock("@/lib/cloudflare/zones", () => ({
   getCloudflareZones: vi.fn(),
   invalidateCloudflareZones: vi.fn(),
   refreshCloudflareZones: vi.fn(),
-  renameCloudflareDnsRecord: vi.fn(),
+  updateCloudflareDnsRecord: vi.fn(),
 }));
 
 import { revalidatePath } from "next/cache";
@@ -20,13 +20,15 @@ import {
   getCloudflareZones,
   invalidateCloudflareZones,
   refreshCloudflareZones,
-  renameCloudflareDnsRecord,
+  updateCloudflareDnsRecord,
 } from "@/lib/cloudflare/zones";
 import {
   createSubdomainAction,
   deleteSubdomainAction,
   refreshCloudflareAction,
   renameSubdomainAction,
+  updateAllARecordsAction,
+  updateSubdomainAction,
 } from "./actions";
 
 beforeEach(() => {
@@ -39,7 +41,16 @@ beforeEach(() => {
       status: "active",
       paused: false,
       ipAddress: "192.0.2.1",
-      subdomains: [],
+      apexARecordId: "apex-record-id",
+      subdomains: [
+        {
+          id: "record-id",
+          name: "app.example.com",
+          type: "A",
+          content: "192.0.2.1",
+          proxied: false,
+        },
+      ],
     },
   ]);
 });
@@ -114,7 +125,7 @@ describe("Cloudflare DNS actions", () => {
       recordId: "record-id",
     });
 
-    expect(renameCloudflareDnsRecord).toHaveBeenCalledWith({
+    expect(updateCloudflareDnsRecord).toHaveBeenCalledWith({
       zoneId: "zone-id",
       recordId: "record-id",
       name: "web.example.com",
@@ -135,7 +146,66 @@ describe("Cloudflare DNS actions", () => {
     });
 
     expect(result.status).toBe("error");
-    expect(renameCloudflareDnsRecord).not.toHaveBeenCalled();
+    expect(updateCloudflareDnsRecord).not.toHaveBeenCalled();
+  });
+
+  it("updates an A record name and IP address", async () => {
+    await expect(
+      updateSubdomainAction({
+        zoneId: "zone-id",
+        zoneName: "example.com",
+        recordId: "record-id",
+        label: "api",
+        ipAddress: "198.51.100.8",
+      }),
+    ).resolves.toEqual({
+      status: "success",
+      message: "DNS record updated.",
+    });
+
+    expect(updateCloudflareDnsRecord).toHaveBeenCalledWith({
+      zoneId: "zone-id",
+      recordId: "record-id",
+      name: "api.example.com",
+      content: "198.51.100.8",
+    });
+  });
+
+  it("updates the apex and every subdomain A record", async () => {
+    await expect(
+      updateAllARecordsAction({
+        zoneId: "zone-id",
+        ipAddress: "203.0.113.9",
+      }),
+    ).resolves.toEqual({
+      status: "success",
+      message: "2 A records updated.",
+    });
+
+    expect(updateCloudflareDnsRecord).toHaveBeenCalledTimes(2);
+    expect(updateCloudflareDnsRecord).toHaveBeenCalledWith({
+      zoneId: "zone-id",
+      recordId: "apex-record-id",
+      content: "203.0.113.9",
+    });
+    expect(updateCloudflareDnsRecord).toHaveBeenCalledWith({
+      zoneId: "zone-id",
+      recordId: "record-id",
+      content: "203.0.113.9",
+    });
+  });
+
+  it("rejects invalid A record IP addresses", async () => {
+    const result = await updateAllARecordsAction({
+      zoneId: "zone-id",
+      ipAddress: "999.0.0.1",
+    });
+
+    expect(result).toEqual({
+      status: "error",
+      message: "Enter a valid IPv4 address.",
+    });
+    expect(updateCloudflareDnsRecord).not.toHaveBeenCalled();
   });
 
   it("forces a fresh server snapshot when manually refreshed", async () => {

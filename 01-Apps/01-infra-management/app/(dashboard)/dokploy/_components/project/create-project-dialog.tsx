@@ -3,7 +3,6 @@
 import { PlusIcon } from "@heroicons/react/24/outline";
 import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useState } from "react";
-import { notifyProjectsChanged } from "@/lib/project-events";
 import { AppDialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,7 +34,6 @@ export function CreateProjectDialog() {
     queueMicrotask(() => {
       setIsOpen(false);
       router.refresh();
-      notifyProjectsChanged();
     });
   }, [router, state]);
 

@@ -7,6 +7,7 @@ import {
   RocketLaunchIcon,
   StopIcon,
   TrashIcon,
+  WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 import { useRouter } from "next/navigation";
 import {
@@ -20,8 +21,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { AppDialog } from "@/components/ui/dialog";
 import {
-  notifyProjectDeleted,
-  notifyProjectsChanged,
   notifyProjectServiceDeleted,
   PROJECT_SERVICE_CREATION_EVENT,
   type PendingProjectService,
@@ -33,6 +32,8 @@ import {
   setProjectServicesStateAction,
 } from "../../_actions/projects";
 import type { ActionState } from "../../_actions/shared";
+import { EnvironmentVariableEditor } from "../environment/environment-variable-editor";
+import { ProjectNameEditor } from "./project-name-editor";
 
 const initialState: ActionState = { status: "idle", message: "" };
 
@@ -40,10 +41,12 @@ export function ProjectSettingsMenu({
   projectId,
   projectName,
   services,
+  environment,
 }: {
   projectId: string;
   projectName: string;
   services: Array<{ id: string; type: string; name: string }>;
+  environment: string;
 }) {
   const [state, formAction, pending] = useActionState(
     setProjectServicesStateAction.bind(null, projectId),
@@ -58,6 +61,7 @@ export function ProjectSettingsMenu({
     "deploy" | "start" | "stop" | null
   >(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [deletingServiceIds, setDeletingServiceIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -116,7 +120,6 @@ export function ProjectSettingsMenu({
       }
       setDeletedServiceIds((current) => new Set(current).add(serviceId));
       notifyProjectServiceDeleted(projectId, serviceId);
-      notifyProjectsChanged();
       return true;
     } catch (error) {
       setServiceDeleteErrors((current) => ({
@@ -201,7 +204,6 @@ export function ProjectSettingsMenu({
     if (deleteState.status !== "success") return;
     queueMicrotask(() => {
       setDeleteOpen(false);
-      notifyProjectDeleted(projectId);
       router.push("/dokploy");
       router.refresh();
     });
@@ -222,6 +224,17 @@ export function ProjectSettingsMenu({
           anchor="bottom end"
           className="z-50 mt-1 w-52 origin-top-right rounded-md border border-gray-200 bg-white p-1 text-sm shadow-xl transition duration-100 outline-none data-closed:scale-95 data-closed:opacity-0 dark:border-white/10 dark:bg-gray-900"
         >
+          <MenuItem>
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(true)}
+              className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-gray-700 data-focus:bg-gray-100 dark:text-gray-300 dark:data-focus:bg-white/5"
+            >
+              <WrenchScrewdriverIcon className="size-4" aria-hidden="true" />
+              Settings
+            </button>
+          </MenuItem>
+          <div className="my-1 border-t border-gray-200 dark:border-white/10" />
           <MenuItem>
             <button
               type="button"
@@ -280,6 +293,32 @@ export function ProjectSettingsMenu({
           </span>
         )}
       </Menu>
+      <AppDialog
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        title={`${projectName} settings`}
+        description="Rename the project and configure its shared environment variables."
+        width="lg"
+      >
+        <div className="max-h-[80vh] overflow-y-auto p-5 sm:p-6">
+          <section className="rounded-lg border border-gray-200 p-4 dark:border-white/10">
+            <h2 className="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">
+              Project name
+            </h2>
+            <ProjectNameEditor
+              projectId={projectId}
+              initialName={projectName}
+            />
+          </section>
+          <EnvironmentVariableEditor
+            target="project"
+            targetId={projectId}
+            targetName={projectName}
+            initialValue={environment}
+            inline
+          />
+        </div>
+      </AppDialog>
       <AppDialog
         open={deleteOpen}
         onClose={closeDeleteDialog}
